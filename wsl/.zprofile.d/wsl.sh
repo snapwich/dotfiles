@@ -1,0 +1,1 @@
+export BROWSER=wsl-open
