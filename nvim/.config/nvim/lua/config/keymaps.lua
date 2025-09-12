@@ -1,0 +1,7 @@
+vim.keymap.set('n', '<leader>yp', function()
+  local filepath = vim.fn.expand('%:p')
+  local linenum = vim.fn.line('.')
+  local result = string.format('%s:%d', filepath, linenum)
+  vim.fn.setreg('+', result)
+  vim.notify('Copied: ' .. result)
+end, { desc = 'Copy file path:line to clipboard' })
