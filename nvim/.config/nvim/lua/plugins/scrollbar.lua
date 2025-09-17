@@ -1,4 +1,4 @@
 return {
-  "petertriho/nvim-scrollbar",
+  "dstein64/nvim-scrollview",
   opts = {},
 }

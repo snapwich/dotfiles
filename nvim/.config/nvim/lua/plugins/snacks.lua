@@ -6,6 +6,9 @@ return {
         hidden = true,
         ignored = true,
       },
+      scroll = {
+        enabled = false,
+      }
     },
   },
 }
