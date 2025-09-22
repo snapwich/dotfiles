@@ -1,4 +1,5 @@
 vim.g.root_spec = { "cwd" }
+vim.opt.winbar = "%=%m %f"
 vim.opt.clipboard = "unnamedplus" -- use + by default
 
 local function in_tmux()
