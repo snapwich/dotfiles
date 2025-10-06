@@ -1,3 +1,6 @@
+export N_PREFIX="$HOME/n"
+export PATH="$PATH:$HOME/n/bin"
+
 export VISUAL=nvim
 export EDITOR="$VISUAL"
 
