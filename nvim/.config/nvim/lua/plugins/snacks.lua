@@ -3,8 +3,6 @@ return {
     "folke/snacks.nvim",
     opts = {
       picker = {
-        hidden = true,
-        ignored = true,
         win = {
           input = {
             keys = {
@@ -13,6 +11,12 @@ return {
             },
           },
         },
+        sources = {
+          explorer = {
+            hidden = true,
+            ignored = true,
+          }
+        }
       },
       scroll = {
         enabled = false,
