@@ -4,9 +4,14 @@
   diffFilter = "delta --color-only"
 [delta]
   navigate = true
-  file-style = bold
-  hunk-header-style = plain
+  features = gruvmax-fang
+  line-numbers-left-format = "{nm:>1}┊"
+  line-numbers-right-format = "{np:>1}┊"
+  minus-style = syntax "#500000"
+  plus-style = syntax "#005050"
 [merge]
   conflictStyle = zdiff3
+[include]
+  path = ~/.config/delta/themes.gitconfig
 [include]
   path = ~/.gitconfig.local
