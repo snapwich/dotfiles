@@ -1,3 +1,5 @@
+[alias]
+  diffs = -c delta.side-by-side=true diff
 [core]
   pager = delta
 [interactive]
