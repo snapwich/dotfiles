@@ -15,12 +15,15 @@ return {
           explorer = {
             hidden = true,
             ignored = true,
+          },
+          files = {
+            hidden = true,
           }
         }
       },
       scroll = {
         enabled = false,
-      }
+      },
     },
   },
 }
