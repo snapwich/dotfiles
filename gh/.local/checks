@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+check_data=$(gh pr checks --json bucket,state,workflow,name,link)
+pass=$(echo "$check_data" | jq '[.[] | select((.bucket == "pass") and (.state != "SKIPPED"))] | length')
+fail=$(echo "$check_data" | jq '[.[] | select(.bucket == "fail")] | length')
+total=$(echo "$check_data" | jq '[.[] | select(.state != "SKIPPED")] | length')
+
+echo "$pass / $total checks passing"
+
+if [ "$fail" -gt 0 ]; then
+  echo ""
+  echo "$fail failed checks:"
+  echo "$check_data" | jq -r '.[] | select(.bucket == "fail") | "  - \(.state): \(if .workflow != "" then "\(.workflow) / " else "" end)\(.name)\n    \(.link)"'
+fi
