@@ -1,0 +1,52 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm list:*)",
+      "Bash(grep:*)",
+      "Bash(pnpm info:*)",
+      "Bash(diff:*)",
+      "Bash(pnpm test:unit:*)",
+      "WebFetch(domain:mui.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:react.dev)",
+      "WebFetch(domain:tanstack.com)",
+      "Bash(npm view:*)",
+      "Bash(git log:*)",
+      "mcp__atlassian__getAccessibleAtlassianResources",
+      "mcp__atlassian__searchJiraIssuesUsingJql",
+      "mcp__atlassian__getJiraIssue",
+      "mcp__atlassian__getVisibleJiraProjects",
+      "mcp__atlassian__getJiraProjectIssueTypesMetadata",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr ready)",
+      "Bash(gh pr view --json url,title)",
+      "Bash(mkdir:*)",
+      "mcp__playwright__browser_navigate",
+      "Bash(gh pr checks -h)",
+      "Bash(pnpm tsc)",
+      "Bash(pnpm tsc --noEmit)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' \\\n| { read file_path; case \"$file_path\" in\n  *.js|*.ts|*.jsx|*.tsx|*.cjs|*.cts|*.mjs|*.mts|*.md|*.mdx|*.vue|*.astro|*.json)\n    npx prettier --write -- \"$file_path\"\n    ;;\n  esac; }"
+          }
+        ]
+      }
+    ]
+  },
+  "alwaysThinkingEnabled": true,
+  "feedbackSurveyState": {
+    "lastShownTime": 1753996469248
+  }
+}
