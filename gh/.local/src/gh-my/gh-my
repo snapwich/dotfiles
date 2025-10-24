@@ -36,22 +36,33 @@ cmd_comments() {
 
   # Process each comment
   echo "$comments" | jq -r '.[] |
-    "---\n## \(.user.login) - \(.created_at)\n" +
-    (if .path then "\nFile: \(.path)\n" else "" end) +
-    (if .diff_hunk then "\n\(.diff_hunk)\n" else "" end) +
-    (if .start_line then "Lines \(.start_line)-\(.line)\n" elif .line then "Line \(.line)\n" else "" end) +
-    "\n\(.body)\n"
-  ' | while IFS= read -r line; do
-    if [[ "$line" == "---" ]]; then
-      echo ""
-      echo "$line"
-    elif [[ "$line" =~ ^(@@ |diff |index |---|\+\+\+) ]]; then
-      # Pipe diff hunks through delta
-      echo "$line" | delta --width "${COLUMNS:-80}"
-    else
-      echo "$line"
-    fi
-  done
+    "---\n" +
+    (if .diff_hunk then
+      "\n<<<DIFF\ndiff --git a/\(.path) b/\(.path)\n--- a/\(.path)\n+++ b/\(.path)\n\(.diff_hunk)\nDIFF>>>\n"
+    else "" end) +
+    (if .start_line then "\nLines \(.start_line)-\(.line)\n" elif .line then "\nLine \(.line)\n" else "" end) +
+    "\n## \(.user.login) - \(.created_at)\n\n\(.body)\n"
+  ' | {
+    in_diff=false
+    diff_content=""
+
+    while IFS= read -r line; do
+      if [[ "$line" == "<<<DIFF" ]]; then
+        in_diff=true
+        diff_content=""
+      elif [[ "$line" == "DIFF>>>" ]]; then
+        in_diff=false
+        echo "$diff_content" | delta --paging=never
+      elif $in_diff; then
+        diff_content+="$line"$'\n'
+      else
+        if [[ "$line" == "---" ]]; then
+          echo ""
+        fi
+        echo "$line"
+      fi
+    done
+  }
 }
 
 case "${1:-}" in
