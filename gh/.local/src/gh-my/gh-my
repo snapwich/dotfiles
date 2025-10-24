@@ -19,6 +19,41 @@ cmd_reviews() {
   gh pr view --json reviews | jq -r '.reviews[] | "\(.author.login): \(.state)"'
 }
 
+cmd_comments() {
+  # Get PR number from arg or current PR
+  pr_num="${2:-$(gh pr view --json number -q .number 2>/dev/null)}"
+
+  if [ -z "$pr_num" ]; then
+    echo "Error: No PR number provided and no current PR found"
+    exit 1
+  fi
+
+  # Get repo org/name
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+  # Fetch comments
+  comments=$(GH_PAGER= gh api "/repos/$repo/pulls/$pr_num/comments")
+
+  # Process each comment
+  echo "$comments" | jq -r '.[] |
+    "---\n## \(.user.login) - \(.created_at)\n" +
+    (if .path then "\nFile: \(.path)\n" else "" end) +
+    (if .diff_hunk then "\n\(.diff_hunk)\n" else "" end) +
+    (if .start_line then "Lines \(.start_line)-\(.line)\n" elif .line then "Line \(.line)\n" else "" end) +
+    "\n\(.body)\n"
+  ' | while IFS= read -r line; do
+    if [[ "$line" == "---" ]]; then
+      echo ""
+      echo "$line"
+    elif [[ "$line" =~ ^(@@ |diff |index |---|\+\+\+) ]]; then
+      # Pipe diff hunks through delta
+      echo "$line" | delta --width "${COLUMNS:-80}"
+    else
+      echo "$line"
+    fi
+  done
+}
+
 case "${1:-}" in
 checks)
   cmd_checks
@@ -26,12 +61,16 @@ checks)
 reviews)
   cmd_reviews
   ;;
+comments)
+  cmd_comments "$@"
+  ;;
 *)
-  echo "Usage: gh my <command>"
+  echo "Usage: gh my <command> [args]"
   echo ""
   echo "Commands:"
   echo "  checks - Show PR check status"
   echo "  reviews - Show PR review status"
+  echo "  comments [pr-number] - Show PR review comments"
   exit 1
   ;;
 esac
