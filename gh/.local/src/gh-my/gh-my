@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+cmd_checks() {
+  check_data=$(gh pr checks --json bucket,state,workflow,name,link)
+  pass=$(echo "$check_data" | jq '[.[] | select((.bucket == "pass") and (.state != "SKIPPED"))] | length')
+  fail=$(echo "$check_data" | jq '[.[] | select(.bucket == "fail")] | length')
+  total=$(echo "$check_data" | jq '[.[] | select(.state != "SKIPPED")] | length')
+
+  echo "$pass / $total checks passing"
+
+  if [ "$fail" -gt 0 ]; then
+    echo ""
+    echo "$fail failed checks:"
+    echo "$check_data" | jq -r '.[] | select(.bucket == "fail") | "  - \(.state): \(if .workflow != "" then "\(.workflow) / " else "" end)\(.name)\n    \(.link)"'
+  fi
+}
+
+cmd_reviews() {
+  gh pr view --json reviews | jq -r '.reviews[] | "\(.author.login): \(.state)"'
+}
+
+case "${1:-}" in
+checks)
+  cmd_checks
+  ;;
+reviews)
+  cmd_reviews
+  ;;
+*)
+  echo "Usage: gh my <command>"
+  echo ""
+  echo "Commands:"
+  echo "  checks - Show PR check status"
+  echo "  reviews - Show PR review status"
+  exit 1
+  ;;
+esac
