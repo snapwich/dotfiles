@@ -11,6 +11,16 @@ gs() {
   git switch $(git branch | fzf | tr -d '[:space:]')
 }
 
+gwtbranch() {
+  if [[ -z $1 ]]; then
+    echo "Usage: gwtbranch <branch> [path]"
+    return 1
+  fi
+  local branch=$1
+  local dest=${2:-../$branch}
+  git worktree add -b "$branch" "$dest" "origin/$branch"
+}
+
 ports() {
     sudo lsof -iTCP -sTCP:LISTEN -n -P | \
     awk 'NR>1 {print $9, $1, $2}' | \
