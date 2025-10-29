@@ -63,7 +63,7 @@ gwtmux() {
   elif [[ $has_remote -eq 0 ]]; then
     $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "origin/$branch" || rc=$?
   else
-    $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "origin/$default_branch" || rc=$?
+    $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "$default_branch" || rc=$?
   fi
   if [[ $rc -eq 0 ]]; then
     builtin cd -- "$worktree_path" || return $?
