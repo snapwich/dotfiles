@@ -18,9 +18,28 @@ gwtmux() {
     print -u2 "Error: not in tmux"
     return 1
   fi
+
   if [[ -z "$1" ]]; then
-    print -u2 "Error: branch or PR number required"
-    return 1
+    # Multi-worktree mode - only works from ../default
+    if [[ ! -d "default/.git" ]]; then
+      print -u2 "Error: branch or PR number required"
+      return 1
+    fi
+
+    $git_cmd -C "$PWD/default" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | while IFS= read -r worktree_path; do
+      # Skip main repo and only process worktrees in current directory
+      if [[ "$worktree_path" != "$PWD/default" && "$(dirname -- "$worktree_path")" == "$PWD" ]]; then
+        local branch
+        branch="$($git_cmd -C "$worktree_path" branch --show-current 2>/dev/null)"
+        if [[ -n "$branch" ]]; then
+          # Check if window already exists
+          if ! tmux list-windows -F "#W" | grep -Fxq -- "$branch"; then
+            tmux new-window -n "$branch" -c "$worktree_path"
+          fi
+        fi
+      fi
+    done
+    return 0
   fi
 
   local git_common_dir git_root
