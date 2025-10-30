@@ -40,7 +40,7 @@ gwtmux() {
       return 1
     fi
   fi
-  local dir_branch="$branch"
+  local dir_branch="${branch//\//_}"
   local -r worktree_path="$(dirname -- "$git_root")/$dir_branch"
   if $git_cmd -C "$git_root" worktree list --porcelain \
       | awk '/^worktree /{print substr($0,10)}' \
@@ -73,6 +73,23 @@ gwtmux() {
   fi
 }
 
+# remove git worktree, delete local branch, and kill tmux window
+gwtdone() {
+  local branch="$(git branch --show-current)"
+  local git_dir="$(git rev-parse --git-dir)"
+  local git_common_dir="$(git rev-parse --git-common-dir)"
+  if [[ "$git_dir" == "$git_common_dir" ]]; then
+    print -u2 "Error: in main repo, not a worktree. Refusing to delete."
+    return 1
+  fi
+  local worktree_root="$(git rev-parse --show-toplevel)"
+  cd $(dirname $git_common_dir)
+  git worktree remove "$worktree_root" || return $?
+  if [[ -n "$branch" ]]; then
+    git branch -D "$branch"
+  fi
+  tmux kill-window
+}
 
 ports() {
     sudo lsof -iTCP -sTCP:LISTEN -n -P | \
