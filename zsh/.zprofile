@@ -27,14 +27,18 @@ gwtmux() {
     fi
 
     $git_cmd -C "$PWD/default" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | while IFS= read -r worktree_path; do
-      # Skip main repo and only process worktrees in current directory
-      if [[ "$worktree_path" != "$PWD/default" && "$(dirname -- "$worktree_path")" == "$PWD" ]]; then
-        local branch
-        branch="$($git_cmd -C "$worktree_path" branch --show-current 2>/dev/null)"
-        if [[ -n "$branch" ]]; then
+      # Only process worktrees in current directory
+      if [[ "$(dirname -- "$worktree_path")" == "$PWD" ]]; then
+        local window_name
+        if [[ "$worktree_path" == "$PWD/default" ]]; then
+          window_name="default"
+        else
+          window_name="$($git_cmd -C "$worktree_path" branch --show-current 2>/dev/null)"
+        fi
+        if [[ -n "$window_name" ]]; then
           # Check if window already exists
-          if ! tmux list-windows -F "#W" | grep -Fxq -- "$branch"; then
-            tmux new-window -n "$branch" -c "$worktree_path"
+          if ! tmux list-windows -F "#W" | grep -Fxq -- "$window_name"; then
+            tmux new-window -n "$window_name" -c "$worktree_path"
           fi
         fi
       fi
