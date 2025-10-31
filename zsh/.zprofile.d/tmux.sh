@@ -103,7 +103,16 @@ gwtmux() {
     fi
   fi
 
-  tmux new-window -n "$window_name" -c "$worktree_path"
+  # Check if current window is "zsh" with single pane
+  local current_window="$(tmux display-message -p '#W')"
+  local pane_count="$(tmux display-message -p '#{window_panes}')"
+
+  if [[ "$current_window" == "zsh" && "$pane_count" == "1" ]]; then
+    tmux rename-window "$window_name"
+    cd "$worktree_path"
+  else
+    tmux new-window -n "$window_name" -c "$worktree_path"
+  fi
 }
 
 # remove git worktree, delete local branch, and kill tmux window
