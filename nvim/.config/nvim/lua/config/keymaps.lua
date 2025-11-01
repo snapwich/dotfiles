@@ -1,3 +1,5 @@
+vim.keymap.set("n", "<leader>cs", "<cmd>TSSort<cr>", { desc = "Sort code (TSSort)" })
+
 vim.keymap.set('n', '<leader>yp', function()
   local abs_path = vim.fn.expand('%:p')
   local root_dir = vim.fn.getcwd()
