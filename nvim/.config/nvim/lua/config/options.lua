@@ -1,22 +1,18 @@
 vim.opt.winbar = "%=%m %f"
 
-local function paste()
-  return {
-    vim.fn.split(vim.fn.getreg(""), "\n"),
-    vim.fn.getregtype(""),
-  }
-end
+local osc52 = require("vim.ui.clipboard.osc52")
 
 vim.g.clipboard = {
   name = "OSC 52",
   copy = {
-    ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
-    ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
+    ["+"] = osc52.copy("+"),
+    ["*"] = osc52.copy("*"),
   },
   paste = {
-    ["+"] = paste,
-    ["*"] = paste,
+    ["+"] = osc52.paste("+"),
+    ["*"] = osc52.paste("*"),
   },
+  cache_enabled = true,
 }
 
-vim.opt.clipboard:append { 'unnamed', 'unnamedplus' }
+vim.opt.clipboard:append("unnamedplus")
