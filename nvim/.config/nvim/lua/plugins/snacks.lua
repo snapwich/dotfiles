@@ -22,7 +22,7 @@ return {
         }
       },
       scroll = {
-        enabled = true,
+        enabled = false,
       },
     },
   },
