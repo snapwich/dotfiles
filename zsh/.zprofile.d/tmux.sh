@@ -6,6 +6,15 @@ gwtmux() {
     return 1
   fi
 
+  # Capture zsh window to potentially reuse or kill (before any commands run)
+  local current_window="$(tmux display-message -p '#W')"
+  local current_window_id="$(tmux display-message -p '#{window_id}')"
+  local pane_count="$(tmux display-message -p '#{window_panes}')"
+  local can_reuse_window=0
+  if [[ "$current_window" == "zsh" && "$pane_count" == "1" ]]; then
+    can_reuse_window=1
+  fi
+
   if [[ -z "$1" ]]; then
     # Multi-worktree mode - only works from ../default
     if [[ ! -d "default/.git" ]]; then
@@ -15,7 +24,8 @@ gwtmux() {
 
     $git_cmd -C "$PWD/default" fetch -a
     local repo_name="$(basename "$PWD")"
-    $git_cmd -C "$PWD/default" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | while IFS= read -r worktree_path; do
+
+    while IFS= read -r worktree_path; do
       # Only process worktrees in current directory
       if [[ "$(dirname -- "$worktree_path")" == "$PWD" ]]; then
         local window_name
@@ -32,7 +42,12 @@ gwtmux() {
           fi
         fi
       fi
-    done
+    done < <($git_cmd -C "$PWD/default" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}')
+
+    # Kill original zsh window if it was single pane
+    if [[ $can_reuse_window -eq 1 ]]; then
+      tmux kill-window -t "$current_window_id"
+    fi
     return 0
   fi
 
@@ -103,11 +118,7 @@ gwtmux() {
     fi
   fi
 
-  # Check if current window is "zsh" with single pane
-  local current_window="$(tmux display-message -p '#W')"
-  local pane_count="$(tmux display-message -p '#{window_panes}')"
-
-  if [[ "$current_window" == "zsh" && "$pane_count" == "1" ]]; then
+  if [[ $can_reuse_window -eq 1 ]]; then
     tmux rename-window "$window_name"
     cd "$worktree_path"
   else
