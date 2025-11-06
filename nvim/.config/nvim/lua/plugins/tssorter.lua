@@ -30,6 +30,15 @@ return {
         object_properties = {
           node = "pair",
         },
+        interface_properties = {
+          node = "property_signature",
+        },
+        interface_methods = {
+          node = "method_signature",
+        },
+        enum_members = {
+          node = "enum_assignment",
+        },
       },
       typescriptreact = {
         imports = {
@@ -46,6 +55,15 @@ return {
         },
         object_properties = {
           node = "pair",
+        },
+        interface_properties = {
+          node = "property_signature",
+        },
+        interface_methods = {
+          node = "method_signature",
+        },
+        enum_members = {
+          node = "enum_assignment",
         },
       },
       javascriptreact = {
