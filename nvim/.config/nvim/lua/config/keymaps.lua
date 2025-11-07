@@ -1,3 +1,5 @@
+local snacks = require "snacks"
+
 vim.keymap.set("n", "<leader>cs", "<cmd>TSSort<cr>", { desc = "Sort code (TSSort)" })
 
 vim.keymap.set('n', '<leader>yp', function()
@@ -17,3 +19,7 @@ vim.keymap.set('n', '<leader>yP', function()
   vim.fn.setreg('+', result)
   vim.notify('Copied: ' .. result)
 end, { desc = 'Copy absolute file path:line number to clipboard' })
+
+vim.keymap.set('n', '<leader>tt', function()
+  snacks.terminal('zsh')
+end, { desc = 'Terminal zsh' })
