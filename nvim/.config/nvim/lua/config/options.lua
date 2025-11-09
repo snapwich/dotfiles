@@ -1,3 +1,13 @@
+vim.opt.relativenumber = false
+vim.api.nvim_create_autocmd("ModeChanged", {
+  callback = function()
+    local m               = vim.api.nvim_get_mode().mode
+    local visual          = (m == "v" or m == "V" or m == "\22")
+    local opend           = (m == "o" or (m:match("^no") ~= nil))
+    vim.wo.relativenumber = visual or opend
+  end,
+})
+
 vim.opt.winbar = "%=%m %f"
 
 local function paste()
