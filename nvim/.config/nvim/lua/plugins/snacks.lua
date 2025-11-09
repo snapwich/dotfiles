@@ -3,12 +3,28 @@ local custom_pickers = {}
 function custom_pickers.git_diff_origin_default()
   -- Query the remote directly for its default branch
   local output = vim.fn.system("git ls-remote --symref origin HEAD 2>/dev/null")
-  local base = "master" -- default fallback
+  local base = nil
 
   -- Parse: "ref: refs/heads/main	HEAD" -> "main"
   local match = output:match("ref: refs/heads/([^\t\n]+)")
   if match then
     base = match
+  end
+
+  -- Fallback: check for common branches locally
+  if not base then
+    vim.fn.system("git rev-parse --verify origin/main 2>/dev/null")
+    if vim.v.shell_error == 0 then
+      base = "main"
+    else
+      vim.fn.system("git rev-parse --verify origin/master 2>/dev/null")
+      if vim.v.shell_error == 0 then
+        base = "master"
+      else
+        vim.notify("Could not determine default branch for origin", vim.log.levels.ERROR)
+        return
+      end
+    end
   end
 
   local git_root = Snacks.git.get_root()
@@ -17,7 +33,7 @@ function custom_pickers.git_diff_origin_default()
     source = "git_diff_origin_default",
     title = "Git branch changed files",
     preview = "file",
-    finder = function(opts, ctx)
+    finder = function(_, ctx)
       return require("snacks.picker.source.proc").proc(
         ctx:opts({
           cmd = "git",
