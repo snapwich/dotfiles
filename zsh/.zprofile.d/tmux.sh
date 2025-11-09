@@ -103,7 +103,15 @@ gwtmux() {
       $git_cmd -C "$git_root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null |
         sed 's|^origin/||'
     )"
-    [[ -z "$default_branch" ]] && default_branch="main"
+    if [[ -z "$default_branch" ]]; then
+      if $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/main; then
+        default_branch="main"
+      elif $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/master; then
+        default_branch="master"
+      else
+        default_branch="main"  # ultimate fallback
+      fi
+    fi
     local rc=0
     if [[ $has_local -eq 0 ]]; then
       $git_cmd -C "$git_root" worktree add --quiet -- "$worktree_path" "$branch" || rc=$?
@@ -217,40 +225,40 @@ gwtrename() {
 #   -r  Also delete remote branch (requires -d or -D)
 gwtdone() {
   # Parse flags
-  local delete_local=0    # 0=no delete, 1=safe delete (-d), 2=force delete (-D)
+  local delete_local=0 # 0=no delete, 1=safe delete (-d), 2=force delete (-D)
   local delete_remote=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -*)
-        # Handle combined flags like -Dr or -dr
-        local flags="${1#-}"
-        local i
-        for (( i=0; i<${#flags}; i++ )); do
-          case "${flags:$i:1}" in
-            d)
-              if [[ $delete_local -eq 0 ]]; then
-                delete_local=1
-              fi
-              ;;
-            D)
-              delete_local=2
-              ;;
-            r)
-              delete_remote=1
-              ;;
-            *)
-              print -u2 "Error: unknown option '-${flags:$i:1}'"
-              return 1
-              ;;
-          esac
-        done
-        shift
-        ;;
-      *)
-        print -u2 "Error: unknown argument '$1'"
-        return 1
-        ;;
+    -*)
+      # Handle combined flags like -Dr or -dr
+      local flags="${1#-}"
+      local i
+      for ((i = 0; i < ${#flags}; i++)); do
+        case "${flags:$i:1}" in
+        d)
+          if [[ $delete_local -eq 0 ]]; then
+            delete_local=1
+          fi
+          ;;
+        D)
+          delete_local=2
+          ;;
+        r)
+          delete_remote=1
+          ;;
+        *)
+          print -u2 "Error: unknown option '-${flags:$i:1}'"
+          return 1
+          ;;
+        esac
+      done
+      shift
+      ;;
+    *)
+      print -u2 "Error: unknown argument '$1'"
+      return 1
+      ;;
     esac
   done
 
@@ -268,7 +276,15 @@ gwtdone() {
     # Safe delete - check if merged BEFORE removing worktree
     local default_branch
     default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
-    [[ -z "$default_branch" ]] && default_branch="main"
+    if [[ -z "$default_branch" ]]; then
+      if git show-ref --verify --quiet refs/remotes/origin/main; then
+        default_branch="main"
+      elif git show-ref --verify --quiet refs/remotes/origin/master; then
+        default_branch="master"
+      else
+        default_branch="main"  # ultimate fallback
+      fi
+    fi
 
     if ! git branch --merged "$default_branch" | grep -Fxq "  $branch"; then
       print -u2 "Error: branch '$branch' is not merged into '$default_branch'. Use -D to force delete."
@@ -277,7 +293,7 @@ gwtdone() {
   fi
 
   # Remove worktree
-  cd $(dirname $git_common_dir)
+  cd "$(dirname "$git_common_dir")"
   git worktree remove "$worktree_root" || return $?
 
   # Delete local branch if requested
