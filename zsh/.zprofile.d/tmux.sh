@@ -210,8 +210,50 @@ gwtrename() {
   tmux rename-window "$repo_name/$new_name"
 }
 
-# remove git worktree, delete local branch, and kill tmux window
+# remove git worktree, optionally delete branches, and kill tmux window
+# Usage: gwtdone [-d|-D] [-r]
+#   -d  Safe delete local branch (only if merged)
+#   -D  Force delete local branch (even if unmerged)
+#   -r  Also delete remote branch (requires -d or -D)
 gwtdone() {
+  # Parse flags
+  local delete_local=0    # 0=no delete, 1=safe delete (-d), 2=force delete (-D)
+  local delete_remote=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -*)
+        # Handle combined flags like -Dr or -dr
+        local flags="${1#-}"
+        local i
+        for (( i=0; i<${#flags}; i++ )); do
+          case "${flags:$i:1}" in
+            d)
+              if [[ $delete_local -eq 0 ]]; then
+                delete_local=1
+              fi
+              ;;
+            D)
+              delete_local=2
+              ;;
+            r)
+              delete_remote=1
+              ;;
+            *)
+              print -u2 "Error: unknown option '-${flags:$i:1}'"
+              return 1
+              ;;
+          esac
+        done
+        shift
+        ;;
+      *)
+        print -u2 "Error: unknown argument '$1'"
+        return 1
+        ;;
+    esac
+  done
+
   local branch="$(git branch --show-current)"
   local git_dir="$(git rev-parse --git-dir)"
   local git_common_dir="$(git rev-parse --git-common-dir)"
@@ -220,10 +262,43 @@ gwtdone() {
     return 1
   fi
   local worktree_root="$(git rev-parse --show-toplevel)"
+
+  # Pre-flight checks: validate branch deletion before making any destructive changes
+  if [[ -n "$branch" && $delete_local -eq 1 ]]; then
+    # Safe delete - check if merged BEFORE removing worktree
+    local default_branch
+    default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+    [[ -z "$default_branch" ]] && default_branch="main"
+
+    if ! git branch --merged "$default_branch" | grep -Fxq "  $branch"; then
+      print -u2 "Error: branch '$branch' is not merged into '$default_branch'. Use -D to force delete."
+      return 1
+    fi
+  fi
+
+  # Remove worktree
   cd $(dirname $git_common_dir)
   git worktree remove "$worktree_root" || return $?
-  if [[ -n "$branch" ]]; then
-    git branch -D "$branch"
+
+  # Delete local branch if requested
+  if [[ -n "$branch" && $delete_local -gt 0 ]]; then
+    if [[ $delete_local -eq 1 ]]; then
+      # Safe delete (already validated above)
+      git branch -d "$branch" || return $?
+    else
+      # Force delete
+      git branch -D "$branch" || return $?
+    fi
+
+    # Delete remote branch if requested
+    if [[ $delete_remote -eq 1 ]]; then
+      if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+        git push origin --delete "$branch" || {
+          print -u2 "Warning: failed to delete remote branch 'origin/$branch'"
+        }
+      fi
+    fi
   fi
+
   tmux kill-window
 }
