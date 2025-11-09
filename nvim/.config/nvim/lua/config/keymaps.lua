@@ -26,3 +26,7 @@ end, { desc = 'Copy absolute file path:line number to clipboard' })
 vim.keymap.set('n', '<leader>tt', function()
   snacks.terminal('zsh')
 end, { desc = 'Terminal zsh' })
+
+vim.keymap.set('n', '<leader>tk', function()
+  snacks.terminal('k9s')
+end, { desc = 'Terminal k9s' })
