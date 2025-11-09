@@ -4,6 +4,7 @@ vim.keymap.set("n", "<leader>cs", "<cmd>TSSort<cr>", { desc = "Sort code (TSSort
 
 vim.keymap.set({ 'n', 'v' }, 'x', '"_x')
 vim.keymap.set({ 'n', 'v' }, 'd', '"_d')
+vim.keymap.set({ 'n', 'v' }, 'c', '"_c')
 
 vim.keymap.set('n', '<leader>yp', function()
   local abs_path = vim.fn.expand('%:p')
