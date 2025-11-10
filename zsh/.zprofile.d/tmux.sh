@@ -6,12 +6,13 @@ gwtmux() {
     return 1
   fi
 
-  # Capture zsh window to potentially reuse or kill (before any commands run)
+  # Capture shell window to potentially reuse or kill (before any commands run)
   local current_window="$(tmux display-message -p '#W')"
   local current_window_id="$(tmux display-message -p '#{window_id}')"
   local pane_count="$(tmux display-message -p '#{window_panes}')"
+  local shell_name=$(basename "${SHELL:-zsh}")
   local can_reuse_window=0
-  if [[ "$current_window" == "zsh" && "$pane_count" == "1" ]]; then
+  if [[ "$current_window" == "$shell_name" && "$pane_count" == "1" ]]; then
     can_reuse_window=1
   fi
 
@@ -218,30 +219,35 @@ gwtrename() {
   tmux rename-window "$repo_name/$new_name"
 }
 
-# remove git worktree, optionally delete branches, and kill tmux window
-# Usage: gwtdone [-d|-D] [-r]
-#   -d  Safe delete local branch (only if merged)
-#   -D  Force delete local branch (even if unmerged)
-#   -r  Also delete remote branch (requires -d or -D)
+# clean up git worktree: optionally delete worktree/branches, kill/rename tmux window
+# Usage: gwtdone [-w] [-b|-B] [-r]
+#   -w  Delete worktree
+#   -b  Safe delete local branch (only if merged)
+#   -B  Force delete local branch (even if unmerged)
+#   -r  Also delete remote branch (requires -b or -B)
 gwtdone() {
   # Parse flags
-  local delete_local=0 # 0=no delete, 1=safe delete (-d), 2=force delete (-D)
+  local delete_worktree=0
+  local delete_local=0 # 0=no delete, 1=safe delete (-b), 2=force delete (-B)
   local delete_remote=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
     -*)
-      # Handle combined flags like -Dr or -dr
+      # Handle combined flags like -wbr or -Brw
       local flags="${1#-}"
       local i
       for ((i = 0; i < ${#flags}; i++)); do
         case "${flags:$i:1}" in
-        d)
+        w)
+          delete_worktree=1
+          ;;
+        b)
           if [[ $delete_local -eq 0 ]]; then
             delete_local=1
           fi
           ;;
-        D)
+        B)
           delete_local=2
           ;;
         r)
@@ -287,14 +293,16 @@ gwtdone() {
     fi
 
     if ! git branch --merged "$default_branch" | grep -Eq "^[* ] +$branch\$"; then
-      echo >&2 "Error: branch '$branch' is not merged into '$default_branch'. Use -D to force delete."
+      echo >&2 "Error: branch '$branch' is not merged into '$default_branch'. Use -B to force delete."
       return 1
     fi
   fi
 
-  # Remove worktree
-  cd "$(dirname "$git_common_dir")"
-  git worktree remove "$worktree_root" || return $?
+  # Remove worktree if requested
+  if [[ $delete_worktree -eq 1 ]]; then
+    cd "$(dirname "$git_common_dir")"
+    git worktree remove "$worktree_root" || return $?
+  fi
 
   # Delete local branch if requested
   if [[ -n "$branch" && $delete_local -gt 0 ]]; then
@@ -316,5 +324,17 @@ gwtdone() {
     fi
   fi
 
-  tmux kill-window
+  # Smart window handling: rename if last window, otherwise kill
+  if [[ -n "$TMUX" ]]; then
+    local window_count=$(tmux list-windows | wc -l)
+    if [[ $window_count -eq 1 ]]; then
+      # Last window: navigate to parent and rename to shell name
+      cd ..
+      local shell_name=$(basename "${SHELL:-zsh}")
+      tmux rename-window "$shell_name"
+    else
+      # Not last window: kill as usual
+      tmux kill-window
+    fi
+  fi
 }

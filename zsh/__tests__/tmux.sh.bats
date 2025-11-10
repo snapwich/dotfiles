@@ -696,7 +696,7 @@ myrepo/existing"
 # Basic functionality
 # ----------------------------------------------------------------------------
 
-@test "gwtdone: removes worktree only (no flags)" {
+@test "gwtdone: kills window only (no flags)" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -711,8 +711,8 @@ myrepo/existing"
   tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone" Enter
   sleep 0.2
 
-  # Worktree should be removed
-  refute [ -d "$WORKTREE_PARENT/test-wt" ]
+  # Worktree should still exist
+  assert [ -d "$WORKTREE_PARENT/test-wt" ]
 
   # Branch should still exist
   run git -C "$MAIN_REPO" branch
@@ -723,7 +723,7 @@ myrepo/existing"
   assert [ "$window_count_after" -lt "$window_count_before" ]
 }
 
-@test "gwtdone: safe delete with -d flag (merged branch)" {
+@test "gwtdone: safe delete with -wb flag (merged branch)" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -744,7 +744,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -d" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wb" Enter
   sleep 0.5
 
   # Both worktree and branch should be removed
@@ -765,7 +765,7 @@ myrepo/existing"
   git add test.txt
   git commit -m "Unmerged commit" >/dev/null 2>&1
 
-  run gwtdone -d
+  run gwtdone -b
   assert_failure
   assert_output --partial "not merged"
 
@@ -773,7 +773,7 @@ myrepo/existing"
   assert_dir_exists "$WORKTREE_PARENT/test-wt"
 }
 
-@test "gwtdone: force delete with -D flag" {
+@test "gwtdone: force delete with -wB flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -787,7 +787,7 @@ myrepo/existing"
 
   tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -D" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -wB" Enter
   sleep 0.2
 
   # Both should be removed despite not being merged
@@ -796,7 +796,7 @@ myrepo/existing"
   refute_output --partial "test-branch"
 }
 
-@test "gwtdone: deletes remote branch with -dr flag" {
+@test "gwtdone: deletes remote branch with -wbr flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -817,7 +817,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -dr" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wbr" Enter
   sleep 0.3
 
   # Local and remote should be deleted
@@ -826,7 +826,7 @@ myrepo/existing"
   refute_output --partial "origin/test-branch"
 }
 
-@test "gwtdone: force deletes remote with -Dr flag" {
+@test "gwtdone: force deletes remote with -wBr flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -841,7 +841,7 @@ myrepo/existing"
 
   tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -Dr" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -wBr" Enter
   sleep 0.3
 
   # Everything should be deleted
@@ -850,7 +850,7 @@ myrepo/existing"
   refute_output --partial "origin/test-branch"
 }
 
-@test "gwtdone: handles combined -dr flags in either order" {
+@test "gwtdone: handles combined -wbr flags in either order" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -870,8 +870,8 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  # Try -rd instead of -dr
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -rd" Enter
+  # Try -rbw instead of -wbr
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -rbw" Enter
   sleep 0.3
 
   # Should work the same
@@ -893,7 +893,7 @@ myrepo/existing"
   git add test.txt
   git commit -m "Test" >/dev/null 2>&1
 
-  # Merge into main (so -d will work)
+  # Merge into main (so -b will work)
   cd "$MAIN_REPO"
   git checkout main >/dev/null 2>&1
   git merge test-branch >/dev/null 2>&1
@@ -901,8 +901,8 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  # Try to delete with -dr (should succeed even though no remote)
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -dr" Enter
+  # Try to delete with -wbr (should succeed even though no remote)
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wbr" Enter
   sleep 0.2
 
   # Should complete without error
@@ -937,7 +937,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -d" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wb" Enter
   sleep 0.5
 
   # Should succeed
@@ -983,7 +983,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -d" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wb" Enter
   sleep 0.5
 
   # Should succeed using master
@@ -1024,4 +1024,106 @@ myrepo/existing"
   run gwtdone invalid-arg
   assert_failure
   assert_output --partial "unknown argument"
+}
+
+# ----------------------------------------------------------------------------
+# New window handling functionality
+# ----------------------------------------------------------------------------
+
+@test "gwtdone: deletes worktree with -w flag" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  git worktree add "$WORKTREE_PARENT/test-wt" -b test-branch main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/test-wt"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
+
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -w" Enter
+  sleep 0.2
+
+  # Worktree should be removed
+  refute [ -d "$WORKTREE_PARENT/test-wt" ]
+
+  # Branch should still exist
+  run git -C "$MAIN_REPO" branch
+  assert_output --partial "test-branch"
+}
+
+@test "gwtdone: renames last window instead of killing" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  git worktree add "$WORKTREE_PARENT/test-wt" -b test-branch main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/test-wt"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+
+  # Ensure we only have one window
+  local window_count_before=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert [ "$window_count_before" -eq 1 ]
+
+  # Get the actual window ID
+  local window_id=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
+
+  tmux send-keys -t "$window_id" "cd $WORKTREE_PARENT/test-wt && gwtdone" Enter
+  sleep 0.3
+
+  # Window should still exist
+  local window_count_after=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert [ "$window_count_after" -eq 1 ]
+
+  # Window should be renamed to shell name
+  run tmux display-message -t "$window_id" -p '#W'
+  assert_output "$(basename "${SHELL:-zsh}")"
+}
+
+@test "gwtdone: navigates to parent when renaming last window" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  git worktree add "$WORKTREE_PARENT/test-wt" -b test-branch main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/test-wt"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+
+  # Ensure we only have one window
+  local window_count=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert [ "$window_count" -eq 1 ]
+
+  # Get the actual window ID
+  local window_id=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
+
+  # Execute gwtdone and capture PWD after
+  tmux send-keys -t "$window_id" "cd $WORKTREE_PARENT/test-wt && gwtdone && pwd > /tmp/gwtdone_pwd_$$" Enter
+  sleep 0.3
+
+  # Verify we're in the parent directory
+  run cat "/tmp/gwtdone_pwd_$$"
+  assert_output "$WORKTREE_PARENT"
+  rm -f "/tmp/gwtdone_pwd_$$"
+}
+
+@test "gwtdone: kills window when multiple windows exist" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  git worktree add "$WORKTREE_PARENT/test-wt" -b test-branch main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/test-wt"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+
+  # Create a second window so we have multiple
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
+  local window_count_before=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert [ "$window_count_before" -gt 1 ]
+
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone" Enter
+  sleep 0.2
+
+  # Window should be killed
+  local window_count_after=$(tmux list-windows -t "$TEST_SESSION" 2>/dev/null | wc -l)
+  assert [ "$window_count_after" -lt "$window_count_before" ]
 }
