@@ -22,7 +22,7 @@ gwtmux() {
       return 1
     fi
 
-    $git_cmd -C "$PWD/default" fetch -a
+    $git_cmd -C "$PWD/default" fetch --prune --no-recurse-submodules --quiet
     local repo_name="$(basename "$PWD")"
 
     while IFS= read -r worktree_path; do
@@ -109,7 +109,7 @@ gwtmux() {
       elif $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/master; then
         default_branch="master"
       else
-        default_branch="main"  # ultimate fallback
+        default_branch="main" # ultimate fallback
       fi
     fi
     local rc=0
@@ -282,7 +282,7 @@ gwtdone() {
       elif git show-ref --verify --quiet refs/remotes/origin/master; then
         default_branch="master"
       else
-        default_branch="main"  # ultimate fallback
+        default_branch="main" # ultimate fallback
       fi
     fi
 
