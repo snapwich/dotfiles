@@ -9,7 +9,7 @@ export EDITOR="$VISUAL"
 
 if [ -d "$HOME/.zprofile.d" ]; then
   for f in "$HOME/.zprofile.d"/*; do
-    [ -r "$f" ] && . "$f"
+    [ -f "$f" ] && [ -r "$f" ] && . "$f"
   done
 fi
 

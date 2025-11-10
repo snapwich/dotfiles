@@ -2,7 +2,7 @@
 gwtmux() {
   local -r git_cmd="git"
   if [[ -z "$TMUX" ]]; then
-    print -u2 "Error: not in tmux"
+    echo >&2 "Error: not in tmux"
     return 1
   fi
 
@@ -18,7 +18,7 @@ gwtmux() {
   if [[ -z "$1" ]]; then
     # Multi-worktree mode - only works from ../default
     if [[ ! -d "default/.git" ]]; then
-      print -u2 "Error: branch or PR number required"
+      echo >&2 "Error: branch or PR number required"
       return 1
     fi
 
@@ -64,7 +64,7 @@ gwtmux() {
   elif [[ -d "default/.git" ]]; then
     git_root="$PWD/default"
   else
-    print -u2 "Error: not in a git repo or parent of default/.git"
+    echo >&2 "Error: not in a git repo or parent of default/.git"
     return 1
   fi
 
@@ -121,7 +121,7 @@ gwtmux() {
       $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "$default_branch" || rc=$?
     fi
     if [[ $rc -ne 0 ]]; then
-      print -u2 "Error: failed to create worktree for '$branch'."
+      echo >&2 "Error: failed to create worktree for '$branch'."
       return $rc
     fi
   fi
@@ -137,31 +137,31 @@ gwtmux() {
 # rename current: worktree dir, branch, remote tracking branch (if exists), tmux window
 gwtrename() {
   if [[ -z "$TMUX" ]]; then
-    print -u2 "Error: not in tmux"
+    echo >&2 "Error: not in tmux"
     return 1
   fi
 
   if [[ -z "$1" ]]; then
-    print -u2 "Error: new name required"
+    echo >&2 "Error: new name required"
     return 1
   fi
 
   local -r new_name="$1"
   local git_dir git_common_dir
   if ! git_dir="$(git rev-parse --git-dir 2>/dev/null)"; then
-    print -u2 "Error: not in a git repo"
+    echo >&2 "Error: not in a git repo"
     return 1
   fi
 
   git_common_dir="$(git rev-parse --git-common-dir)"
   if [[ "$git_dir" == "$git_common_dir" ]]; then
-    print -u2 "Error: in main repo, not a worktree. Refusing to rename."
+    echo >&2 "Error: in main repo, not a worktree. Refusing to rename."
     return 1
   fi
 
   local current_branch="$(git branch --show-current)"
   if [[ -z "$current_branch" ]]; then
-    print -u2 "Error: not on a branch"
+    echo >&2 "Error: not on a branch"
     return 1
   fi
 
@@ -169,7 +169,7 @@ gwtrename() {
   local commit_author="$(git log -1 --format='%ae')"
   local current_user="$(git config user.email)"
   if [[ "$commit_author" != "$current_user" ]]; then
-    print -u2 "Error: latest commit not authored by you ($commit_author vs $current_user)"
+    echo >&2 "Error: latest commit not authored by you ($commit_author vs $current_user)"
     return 1
   fi
 
@@ -182,7 +182,7 @@ gwtrename() {
   local new_path="$parent_dir/$dir_new_name"
 
   if [[ -e "$new_path" ]]; then
-    print -u2 "Error: $new_path already exists"
+    echo >&2 "Error: $new_path already exists"
     return 1
   fi
 
@@ -204,7 +204,7 @@ gwtrename() {
   # Update remote if exists
   if [[ $has_remote -eq 1 ]]; then
     if ! git push origin "$new_name"; then
-      print -u2 "Error: failed to push new branch. Reverting local changes..."
+      echo >&2 "Error: failed to push new branch. Reverting local changes..."
       git branch -m "$new_name" "$current_branch"
       git worktree move "$new_path" "$worktree_root"
       cd "$worktree_root"
@@ -248,7 +248,7 @@ gwtdone() {
           delete_remote=1
           ;;
         *)
-          print -u2 "Error: unknown option '-${flags:$i:1}'"
+          echo >&2 "Error: unknown option '-${flags:$i:1}'"
           return 1
           ;;
         esac
@@ -256,7 +256,7 @@ gwtdone() {
       shift
       ;;
     *)
-      print -u2 "Error: unknown argument '$1'"
+      echo >&2 "Error: unknown argument '$1'"
       return 1
       ;;
     esac
@@ -266,7 +266,7 @@ gwtdone() {
   local git_dir="$(git rev-parse --git-dir)"
   local git_common_dir="$(git rev-parse --git-common-dir)"
   if [[ "$git_dir" == "$git_common_dir" ]]; then
-    print -u2 "Error: in main repo, not a worktree. Refusing to delete."
+    echo >&2 "Error: in main repo, not a worktree. Refusing to delete."
     return 1
   fi
   local worktree_root="$(git rev-parse --show-toplevel)"
@@ -286,8 +286,8 @@ gwtdone() {
       fi
     fi
 
-    if ! git branch --merged "$default_branch" | grep -Fxq "  $branch"; then
-      print -u2 "Error: branch '$branch' is not merged into '$default_branch'. Use -D to force delete."
+    if ! git branch --merged "$default_branch" | grep -Eq "^[* ] +$branch\$"; then
+      echo >&2 "Error: branch '$branch' is not merged into '$default_branch'. Use -D to force delete."
       return 1
     fi
   fi
@@ -310,7 +310,7 @@ gwtdone() {
     if [[ $delete_remote -eq 1 ]]; then
       if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
         git push origin --delete "$branch" || {
-          print -u2 "Warning: failed to delete remote branch 'origin/$branch'"
+          echo >&2 "Warning: failed to delete remote branch 'origin/$branch'"
         }
       fi
     fi
