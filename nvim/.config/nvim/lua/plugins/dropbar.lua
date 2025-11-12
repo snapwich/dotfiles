@@ -1,7 +1,17 @@
 return {
   "Bekaboo/dropbar.nvim",
-  opts = {},
-  config = function()
+  opts = {
+    bar = {
+      sources = function()
+        local sources = require("dropbar.sources")
+        return {
+          sources.path,
+        }
+      end,
+    },
+  },
+  config = function(_, opts)
+    require("dropbar").setup(opts)
     local dropbar_api = require('dropbar.api')
     vim.keymap.set('n', '<Leader>;', dropbar_api.pick, { desc = 'Pick symbols in winbar' })
     vim.keymap.set('n', '[;', dropbar_api.goto_context_start, { desc = 'Go to start of current context' })
