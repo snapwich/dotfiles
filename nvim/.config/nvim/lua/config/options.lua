@@ -8,8 +8,6 @@ vim.api.nvim_create_autocmd("ModeChanged", {
   end,
 })
 
-vim.opt.winbar = "%=%m %f"
-
 local function paste()
   return {
     vim.fn.split(vim.fn.getreg(""), "\n"),
