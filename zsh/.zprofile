@@ -13,6 +13,3 @@ if [ -d "$HOME/.zprofile.d" ]; then
   done
 fi
 
-ghdiff() {
-  git diff $1... | delta -s
-}
