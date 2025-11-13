@@ -477,14 +477,14 @@ myrepo/existing"
 }
 
 # ============================================================================
-# TESTS: gwtrename
+# TESTS: gwtmux --rename
 # ============================================================================
 
 # ----------------------------------------------------------------------------
 # Basic functionality
 # ----------------------------------------------------------------------------
 
-@test "gwtrename: renames directory, branch, and window (no remote)" {
+@test "gwtmux --rename: renames directory, branch, and window (no remote)" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -505,7 +505,7 @@ myrepo/existing"
   tmux new-window -t "$TEST_SESSION" -n "myrepo/old-name" -c "$WORKTREE_PARENT/old-name" 2>/dev/null
 
   # Rename
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/old-name && gwtrename new-name" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/old-name && gwtmux --rename new-name" Enter
   sleep 0.2
 
   # Verify directory renamed
@@ -522,7 +522,7 @@ myrepo/existing"
   refute_output --partial "myrepo/old-name"
 }
 
-@test "gwtrename: renames with remote tracking branch" {
+@test "gwtmux --rename: renames with remote tracking branch" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -541,7 +541,7 @@ myrepo/existing"
   tmux new-window -t "$TEST_SESSION" -n "myrepo/old-name" -c "$WORKTREE_PARENT/old-name" 2>/dev/null
 
   # Rename
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/old-name && gwtrename new-name" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/old-name && gwtmux --rename new-name" Enter
   sleep 0.3
 
   # Verify remote branch was renamed
@@ -554,7 +554,7 @@ myrepo/existing"
   assert_output "origin/new-name"
 }
 
-@test "gwtrename: converts slashes to underscores in directory name" {
+@test "gwtmux --rename: converts slashes to underscores in directory name" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -568,7 +568,7 @@ myrepo/existing"
 
   tmux new-window -t "$TEST_SESSION" -n "myrepo/old-name" -c "$WORKTREE_PARENT/old-name" 2>/dev/null
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/old-name && gwtrename feature/new-name" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/old-name && gwtmux --rename feature/new-name" Enter
   sleep 0.2
 
   # Directory should use underscores
@@ -587,7 +587,7 @@ myrepo/existing"
 # Error cases and rollback
 # ----------------------------------------------------------------------------
 
-@test "gwtrename: errors when not in tmux" {
+@test "gwtmux --rename: errors when not in tmux" {
   unset TMUX
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
@@ -595,42 +595,42 @@ myrepo/existing"
   git worktree add -b test-wt "$WORKTREE_PARENT/test-wt" main >/dev/null 2>&1
   cd "$WORKTREE_PARENT/test-wt"
 
-  run gwtrename new-name
+  run gwtmux --rename new-name
   assert_failure
   assert_output --partial "not in tmux"
 }
 
-@test "gwtrename: errors when no name provided" {
+@test "gwtmux --rename: errors when no name provided" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
   git worktree add -b test-wt "$WORKTREE_PARENT/test-wt" main >/dev/null 2>&1
   cd "$WORKTREE_PARENT/test-wt"
 
-  run gwtrename
+  run gwtmux --rename
   assert_failure
   assert_output --partial "new name required"
 }
 
-@test "gwtrename: errors when not in git repo" {
+@test "gwtmux --rename: errors when not in git repo" {
   cd "$TEST_TEMP_DIR"
   mkdir -p not-a-repo
   cd not-a-repo
 
-  run gwtrename new-name
+  run gwtmux --rename new-name
   assert_failure
   assert_output --partial "not in a git repo"
 }
 
-@test "gwtrename: errors when in main repo (not worktree)" {
+@test "gwtmux --rename: errors when in main repo (not worktree)" {
   cd "$MAIN_REPO"
 
-  run gwtrename new-name
+  run gwtmux --rename new-name
   assert_failure
   assert_output --partial "in main repo, not a worktree"
 }
 
-@test "gwtrename: errors when not on a branch" {
+@test "gwtmux --rename: errors when not on a branch" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -640,12 +640,12 @@ myrepo/existing"
   # Detach HEAD
   git checkout HEAD~0 >/dev/null 2>&1
 
-  run gwtrename new-name
+  run gwtmux --rename new-name
   assert_failure
   assert_output --partial "not on a branch"
 }
 
-@test "gwtrename: errors when target path already exists" {
+@test "gwtmux --rename: errors when target path already exists" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -659,12 +659,12 @@ myrepo/existing"
   git add test.txt
   git commit -m "Test" >/dev/null 2>&1
 
-  run gwtrename new-name
+  run gwtmux --rename new-name
   assert_failure
   assert_output --partial "already exists"
 }
 
-@test "gwtrename: errors when commit author doesn't match current user" {
+@test "gwtmux --rename: errors when commit author doesn't match current user" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -683,20 +683,20 @@ myrepo/existing"
   # Change user back
   git config user.email "test@example.com"
 
-  run gwtrename new-name
+  run gwtmux --rename new-name
   assert_failure
   assert_output --partial "not authored by you"
 }
 
 # ============================================================================
-# TESTS: gwtdone
+# TESTS: gwtmux -d
 # ============================================================================
 
 # ----------------------------------------------------------------------------
 # Basic functionality
 # ----------------------------------------------------------------------------
 
-@test "gwtdone: kills window only (no flags)" {
+@test "gwtmux -d: kills window only (no flags)" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -708,7 +708,7 @@ myrepo/existing"
   tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
   local window_count_before=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtmux -d" Enter
   sleep 0.2
 
   # Worktree should still exist
@@ -723,7 +723,7 @@ myrepo/existing"
   assert [ "$window_count_after" -lt "$window_count_before" ]
 }
 
-@test "gwtdone: safe delete with -wb flag (merged branch)" {
+@test "gwtmux -d: safe delete with -wb flag (merged branch)" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -744,7 +744,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wb" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wb" Enter
   sleep 0.5
 
   # Both worktree and branch should be removed
@@ -753,7 +753,7 @@ myrepo/existing"
   refute_output --partial "test-branch"
 }
 
-@test "gwtdone: safe delete fails on unmerged branch" {
+@test "gwtmux -d: safe delete fails on unmerged branch" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -765,7 +765,7 @@ myrepo/existing"
   git add test.txt
   git commit -m "Unmerged commit" >/dev/null 2>&1
 
-  run gwtdone -b
+  run gwtmux -d -b
   assert_failure
   assert_output --partial "not merged"
 
@@ -773,7 +773,7 @@ myrepo/existing"
   assert_dir_exists "$WORKTREE_PARENT/test-wt"
 }
 
-@test "gwtdone: force delete with -wB flag" {
+@test "gwtmux -d: force delete with -wB flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -787,7 +787,7 @@ myrepo/existing"
 
   tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -wB" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wB" Enter
   sleep 0.2
 
   # Both should be removed despite not being merged
@@ -796,7 +796,7 @@ myrepo/existing"
   refute_output --partial "test-branch"
 }
 
-@test "gwtdone: deletes remote branch with -wbr flag" {
+@test "gwtmux -d: deletes remote branch with -wbr flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -817,7 +817,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wbr" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wbr" Enter
   sleep 0.3
 
   # Local and remote should be deleted
@@ -826,7 +826,7 @@ myrepo/existing"
   refute_output --partial "origin/test-branch"
 }
 
-@test "gwtdone: force deletes remote with -wBr flag" {
+@test "gwtmux -d: force deletes remote with -wBr flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -841,7 +841,7 @@ myrepo/existing"
 
   tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -wBr" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wBr" Enter
   sleep 0.3
 
   # Everything should be deleted
@@ -850,7 +850,7 @@ myrepo/existing"
   refute_output --partial "origin/test-branch"
 }
 
-@test "gwtdone: handles combined -wbr flags in either order" {
+@test "gwtmux -d: handles combined -wbr flags in either order" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -871,7 +871,7 @@ myrepo/existing"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
   # Try -rbw instead of -wbr
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -rbw" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -rbw" Enter
   sleep 0.3
 
   # Should work the same
@@ -880,7 +880,7 @@ myrepo/existing"
   refute_output --partial "origin/test-branch"
 }
 
-@test "gwtdone: only deletes remote if remote ref exists" {
+@test "gwtmux -d: only deletes remote if remote ref exists" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -902,7 +902,7 @@ myrepo/existing"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
   # Try to delete with -wbr (should succeed even though no remote)
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wbr" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wbr" Enter
   sleep 0.2
 
   # Should complete without error
@@ -913,7 +913,7 @@ myrepo/existing"
 # Default branch detection for merge check
 # ----------------------------------------------------------------------------
 
-@test "gwtdone: uses symbolic-ref for merge check" {
+@test "gwtmux -d: uses symbolic-ref for merge check" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -937,14 +937,14 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wb" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wb" Enter
   sleep 0.5
 
   # Should succeed
   refute [ -d "$WORKTREE_PARENT/test-wt" ]
 }
 
-@test "gwtdone: falls back to master for merge check" {
+@test "gwtmux -d: falls back to master for merge check" {
   # Create repo with master branch
   local master_remote="$TEST_TEMP_DIR/remote-master2.git"
   git init --bare "$master_remote" >/dev/null 2>&1
@@ -983,7 +983,7 @@ myrepo/existing"
   cd "$WORKTREE_PARENT/test-wt"
   local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
 
-  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtdone -wb" Enter
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -wb" Enter
   sleep 0.5
 
   # Should succeed using master
@@ -994,34 +994,53 @@ myrepo/existing"
 # Error cases
 # ----------------------------------------------------------------------------
 
-@test "gwtdone: errors when in main repo (not worktree)" {
+@test "gwtmux -d: errors when in main repo with destructive flags" {
   cd "$MAIN_REPO"
 
-  run gwtdone
+  run gwtmux -d -w
   assert_failure
   assert_output --partial "in main repo, not a worktree"
 }
 
-@test "gwtdone: errors on unknown flag" {
+@test "gwtmux -d: works in main repo without destructive flags" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create a second window so we have multiple
+  tmux new-window -t "$TEST_SESSION" -n "test-window" -c "$MAIN_REPO" 2>/dev/null
+  local window_count_before=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert [ "$window_count_before" -gt 1 ]
+
+  # Get the second window ID and run gwtmux -d from it
+  local second_window=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | tail -1)
+  tmux send-keys -t "$second_window" "cd $MAIN_REPO && gwtmux -d" Enter
+  sleep 0.2
+
+  # Window should be killed (since we have multiple windows)
+  local window_count_after=$(tmux list-windows -t "$TEST_SESSION" 2>/dev/null | wc -l)
+  assert [ "$window_count_after" -lt "$window_count_before" ]
+}
+
+@test "gwtmux -d: errors on unknown flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
   git worktree add -b test-wt "$WORKTREE_PARENT/test-wt" main >/dev/null 2>&1
   cd "$WORKTREE_PARENT/test-wt"
 
-  run gwtdone -x
+  run gwtmux -d -x
   assert_failure
   assert_output --partial "unknown option"
 }
 
-@test "gwtdone: errors on unknown argument" {
+@test "gwtmux -d: errors on unknown argument" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
   git worktree add -b test-wt "$WORKTREE_PARENT/test-wt" main >/dev/null 2>&1
   cd "$WORKTREE_PARENT/test-wt"
 
-  run gwtdone invalid-arg
+  run gwtmux -d invalid-arg
   assert_failure
   assert_output --partial "unknown argument"
 }
@@ -1030,7 +1049,7 @@ myrepo/existing"
 # New window handling functionality
 # ----------------------------------------------------------------------------
 
-@test "gwtdone: deletes worktree with -w flag" {
+@test "gwtmux -d: deletes worktree with -w flag" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -1041,7 +1060,7 @@ myrepo/existing"
 
   tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" 2>/dev/null
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone -w" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtmux -d -w" Enter
   sleep 0.2
 
   # Worktree should be removed
@@ -1052,7 +1071,7 @@ myrepo/existing"
   assert_output --partial "test-branch"
 }
 
-@test "gwtdone: renames last window instead of killing" {
+@test "gwtmux -d: renames last window instead of killing" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -1068,7 +1087,7 @@ myrepo/existing"
   # Get the actual window ID
   local window_id=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
 
-  tmux send-keys -t "$window_id" "cd $WORKTREE_PARENT/test-wt && gwtdone" Enter
+  tmux send-keys -t "$window_id" "cd $WORKTREE_PARENT/test-wt && gwtmux -d" Enter
   sleep 0.3
 
   # Window should still exist
@@ -1080,7 +1099,7 @@ myrepo/existing"
   assert_output "$(basename "${SHELL:-zsh}")"
 }
 
-@test "gwtdone: navigates to parent when renaming last window" {
+@test "gwtmux -d: navigates to parent when renaming last window" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -1096,17 +1115,17 @@ myrepo/existing"
   # Get the actual window ID
   local window_id=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
 
-  # Execute gwtdone and capture PWD after
-  tmux send-keys -t "$window_id" "cd $WORKTREE_PARENT/test-wt && gwtdone && pwd > /tmp/gwtdone_pwd_$$" Enter
+  # Execute gwtmux -d and capture PWD after
+  tmux send-keys -t "$window_id" "cd $WORKTREE_PARENT/test-wt && gwtmux -d && pwd > /tmp/gwtmux_done_pwd_$$" Enter
   sleep 0.3
 
   # Verify we're in the parent directory
-  run cat "/tmp/gwtdone_pwd_$$"
+  run cat "/tmp/gwtmux_done_pwd_$$"
   assert_output "$WORKTREE_PARENT"
-  rm -f "/tmp/gwtdone_pwd_$$"
+  rm -f "/tmp/gwtmux_done_pwd_$$"
 }
 
-@test "gwtdone: kills window when multiple windows exist" {
+@test "gwtmux -d: kills window when multiple windows exist" {
   setup_worktree_structure "myrepo"
   cd "$MAIN_REPO"
 
@@ -1120,7 +1139,7 @@ myrepo/existing"
   local window_count_before=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
   assert [ "$window_count_before" -gt 1 ]
 
-  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtdone" Enter
+  tmux send-keys -t "$TEST_SESSION:1" "cd $WORKTREE_PARENT/test-wt && gwtmux -d" Enter
   sleep 0.2
 
   # Window should be killed
