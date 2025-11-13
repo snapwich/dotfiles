@@ -1,6 +1,20 @@
 return {
   "Bekaboo/dropbar.nvim",
   opts = {
+    general = {
+      -- show more filetypes than default
+      enable = function(buf)
+        local buftype = vim.bo[buf].buftype
+        local filetype = vim.bo[buf].filetype
+        if buftype ~= "" and buftype ~= "acwrite" then
+          return false
+        end
+        if filetype == "help" then
+          return false
+        end
+        return true
+      end,
+    },
     bar = {
       padding = {
         left = 1,
