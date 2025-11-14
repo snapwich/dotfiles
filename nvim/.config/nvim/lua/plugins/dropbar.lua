@@ -25,5 +25,15 @@ return {
         }
       end,
     },
+    sources = {
+      path = {
+        modified = function(sym)
+          return sym:merge({
+            icon = " " .. sym.icon,
+            icon_hl = "DiagnosticWarn",
+          })
+        end,
+      },
+    },
   },
 }
