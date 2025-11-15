@@ -1,5 +1,5 @@
 return {
-  "mlllow/modes.nvim",
+  "mvllow/modes.nvim",
   opts = {
     line_opacity = .25,
   }
