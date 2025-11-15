@@ -36,4 +36,9 @@ return {
       },
     },
   },
+  config = function(_, opts)
+    require("dropbar").setup(opts);
+    local dropbar_api = require("dropbar.api")
+    vim.keymap.set("n", '<Leader>;', dropbar_api.pick, { desc = "Pick dropbar entries" })
+  end
 }
