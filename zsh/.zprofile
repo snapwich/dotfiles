@@ -13,3 +13,5 @@ if [ -d "$HOME/.zprofile.d" ]; then
   done
 fi
 
+alias k="kubectl"
+
