@@ -489,16 +489,18 @@ gwtmux() {
       # Track if any worktree succeeded (for window reuse logic)
       local success_count=0
 
+      # Declare loop variables outside the loop to avoid re-declaration issues
+      local branch window_name dir_branch worktree_path worktree_exists has_local has_remote rc
+
       # Process each argument
       for arg in "$@"; do
         # Resolve branch name (try gh pr first, fall back to arg)
-        local branch
         branch="$(
           (cd "$git_root" 2>/dev/null && GH_PAGER= gh pr view "$arg" --json headRefName --jq '.headRefName') 2>/dev/null
         )"
         [[ -z "$branch" ]] && branch="$arg"
 
-        local window_name="$repo_name/$branch"
+        window_name="$repo_name/$branch"
 
         # If window already exists, just select it
         if tmux list-windows -F "#W" | grep -Fxq -- "$window_name"; then
@@ -507,9 +509,9 @@ gwtmux() {
           continue
         fi
 
-        local dir_branch="${branch//\//_}"
-        local worktree_path="$(dirname -- "$git_root")/$dir_branch"
-        local worktree_exists=0
+        dir_branch="${branch//\//_}"
+        worktree_path="$(dirname -- "$git_root")/$dir_branch"
+        worktree_exists=0
         if $git_cmd -C "$git_root" worktree list --porcelain |
           awk '/^worktree /{print substr($0,10)}' |
           grep -Fxq -- "$worktree_path"; then
@@ -518,13 +520,12 @@ gwtmux() {
 
         # Create worktree if it doesn't exist
         if [[ $worktree_exists -eq 0 ]]; then
-          local has_local has_remote
           $git_cmd -C "$git_root" show-ref --verify --quiet "refs/heads/$branch"
           has_local=$?
           $git_cmd -C "$git_root" show-ref --verify --quiet "refs/remotes/origin/$branch"
           has_remote=$?
 
-          local rc=0
+          rc=0
           if [[ $has_local -eq 0 ]]; then
             $git_cmd -C "$git_root" worktree add --quiet -- "$worktree_path" "$branch" || rc=$?
           elif [[ $has_remote -eq 0 ]]; then
