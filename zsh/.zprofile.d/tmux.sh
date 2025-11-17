@@ -15,18 +15,20 @@ gwtmux() {
     done)
       # ========================================================================
       # DONE MODE: clean up git worktree
-      # Usage: gwtmux -d [-w] [-b|-B] [-r]
+      # Usage: gwtmux -d [-w] [-b|-B] [-r] [worktree_name...]
       #   -d  Done mode (required)
       #   -w  Delete worktree
       #   -b  Safe delete local branch (only if merged)
       #   -B  Force delete local branch (even if unmerged)
       #   -r  Also delete remote branch (requires -b or -B)
+      #   worktree_name  Optional worktree name(s) to delete (default: current)
       # ========================================================================
 
-      # Parse flags
+      # Parse flags and collect worktree names
       local delete_worktree=0
       local delete_local=0 # 0=no delete, 1=safe delete (-b), 2=force delete (-B)
       local delete_remote=0
+      local -a worktree_names=()
 
       while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -62,28 +64,117 @@ gwtmux() {
           shift
           ;;
         *)
-          echo >&2 "Error: unknown argument '$1'"
-          return 1
+          # Non-flag argument - treat as worktree name
+          worktree_names+=("$1")
+          shift
           ;;
         esac
       done
 
-      local branch="$(git branch --show-current)"
-      local worktree_root="$(git rev-parse --show-toplevel)"
-      local git_common_dir="$(git rev-parse --git-common-dir)"
-
-      # Check if we're in a worktree only when doing destructive operations
-      if [[ $delete_worktree -eq 1 || $delete_local -gt 0 ]]; then
-        local git_dir="$(git rev-parse --git-dir)"
-        if [[ "$git_dir" == "$git_common_dir" ]]; then
-          echo >&2 "Error: in main repo, not a worktree. Refusing to delete."
-          return 1
-        fi
+      # Find git root for all operations
+      local git_common_dir
+      if ! git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"; then
+        echo >&2 "Error: not in a git repository"
+        return 1
+      fi
+      # Convert to absolute path
+      if [[ "$git_common_dir" != /* ]]; then
+        git_common_dir="$PWD/$git_common_dir"
       fi
 
-      # Pre-flight checks: validate branch deletion before making any destructive changes
-      if [[ -n "$branch" && $delete_local -eq 1 ]]; then
-        # Safe delete - check if merged BEFORE removing worktree
+      # If no worktree names provided, use current worktree (backward compatibility)
+      if [[ ${#worktree_names[@]} -eq 0 ]]; then
+        # Original single-worktree behavior
+        local branch="$(git branch --show-current)"
+        local worktree_root="$(git rev-parse --show-toplevel)"
+
+        # Check if we're in a worktree only when doing destructive operations
+        if [[ $delete_worktree -eq 1 || $delete_local -gt 0 ]]; then
+          local git_dir="$(git rev-parse --git-dir)"
+          # Convert to absolute path for comparison
+          if [[ "$git_dir" != /* ]]; then
+            git_dir="$PWD/$git_dir"
+          fi
+          if [[ "$git_dir" == "$git_common_dir" ]]; then
+            echo >&2 "Error: in main repo, not a worktree. Refusing to delete."
+            return 1
+          fi
+        fi
+
+        # Pre-flight checks: validate branch deletion before making any destructive changes
+        if [[ -n "$branch" && $delete_local -eq 1 ]]; then
+          # Safe delete - check if merged BEFORE removing worktree
+          local default_branch
+          default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+          if [[ -z "$default_branch" ]]; then
+            if git show-ref --verify --quiet refs/remotes/origin/main; then
+              default_branch="main"
+            elif git show-ref --verify --quiet refs/remotes/origin/master; then
+              default_branch="master"
+            else
+              default_branch="main" # ultimate fallback
+            fi
+          fi
+
+          if ! git branch --merged "$default_branch" | grep -Eq "^[* ] +$branch\$"; then
+            echo >&2 "Error: branch '$branch' is not merged into '$default_branch'. Use -B to force delete."
+            return 1
+          fi
+        fi
+
+        # Remove worktree if requested
+        if [[ $delete_worktree -eq 1 ]]; then
+          cd "$(dirname "$git_common_dir")"
+          git worktree remove "$worktree_root" || return $?
+        fi
+
+        # Delete local branch if requested
+        if [[ -n "$branch" && $delete_local -gt 0 ]]; then
+          if [[ $delete_local -eq 1 ]]; then
+            # Safe delete (already validated above)
+            git branch -d "$branch" || return $?
+          else
+            # Force delete
+            git branch -D "$branch" || return $?
+          fi
+
+          # Delete remote branch if requested
+          if [[ $delete_remote -eq 1 ]]; then
+            if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+              git push origin --delete "$branch" || {
+                echo >&2 "Warning: failed to delete remote branch 'origin/$branch'"
+              }
+            fi
+          fi
+        fi
+
+        # Smart window handling: rename if last window, otherwise kill
+        if [[ -n "$TMUX" ]]; then
+          local window_count=$(tmux list-windows | wc -l)
+          if [[ $window_count -eq 1 ]]; then
+            # Last window: navigate to parent and rename to shell name
+            cd ..
+            local shell_name=$(basename "${SHELL:-zsh}")
+            tmux rename-window "$shell_name"
+          else
+            # Not last window: kill as usual
+            tmux kill-window
+          fi
+        fi
+      else
+        # Multi-worktree mode: two-phase validation
+        # Parent dir is the directory containing the main repo
+        # e.g., if git_common_dir is /path/myrepo/default/.git, parent is /path/myrepo
+        local git_root="$(dirname "$git_common_dir")"
+        local parent_dir="$(dirname "$git_root")"
+        local repo_name="$(basename "$parent_dir")"
+
+        # Arrays to store validated data
+        local -a worktree_paths=()
+        local -a branch_names=()
+        local -a window_names=()
+
+        # Determine default branch for merge checking
         local default_branch
         default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
         if [[ -z "$default_branch" ]]; then
@@ -96,50 +187,119 @@ gwtmux() {
           fi
         fi
 
-        if ! git branch --merged "$default_branch" | grep -Eq "^[* ] +$branch\$"; then
-          echo >&2 "Error: branch '$branch' is not merged into '$default_branch'. Use -B to force delete."
-          return 1
-        fi
-      fi
+        # ====================================================================
+        # PHASE 1: VALIDATION - All must pass or abort entire operation
+        # ====================================================================
+        for wt_name in "${worktree_names[@]}"; do
+          # Convert slashes to underscores (same as normal mode)
+          local dir_name="${wt_name//\//_}"
+          local wt_path="$parent_dir/$dir_name"
 
-      # Remove worktree if requested
-      if [[ $delete_worktree -eq 1 ]]; then
-        cd "$(dirname "$git_common_dir")"
-        git worktree remove "$worktree_root" || return $?
-      fi
+          # Check if worktree exists
+          if ! git -C "$git_root" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | grep -Fxq "$wt_path"; then
+            echo >&2 "Error: worktree '$wt_name' (path: $wt_path) does not exist"
+            return 1
+          fi
 
-      # Delete local branch if requested
-      if [[ -n "$branch" && $delete_local -gt 0 ]]; then
-        if [[ $delete_local -eq 1 ]]; then
-          # Safe delete (already validated above)
-          git branch -d "$branch" || return $?
-        else
-          # Force delete
-          git branch -D "$branch" || return $?
-        fi
+          # Get branch name for this worktree
+          local wt_branch
+          wt_branch="$(git -C "$wt_path" branch --show-current 2>/dev/null)"
 
-        # Delete remote branch if requested
-        if [[ $delete_remote -eq 1 ]]; then
-          if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-            git push origin --delete "$branch" || {
-              echo >&2 "Warning: failed to delete remote branch 'origin/$branch'"
+          # Check if we're trying to delete main repo
+          if [[ $delete_worktree -eq 1 || $delete_local -gt 0 ]]; then
+            local wt_git_dir="$(git -C "$wt_path" rev-parse --git-dir 2>/dev/null)"
+            if [[ "$wt_git_dir" == "$git_common_dir" ]]; then
+              echo >&2 "Error: worktree '$wt_name' is the main repo. Refusing to delete."
+              return 1
+            fi
+          fi
+
+          # Pre-flight check: validate branch merge status if safe delete requested
+          if [[ -n "$wt_branch" && $delete_local -eq 1 ]]; then
+            if ! git -C "$git_root" branch --merged "$default_branch" | grep -Eq "^[* ] +$wt_branch\$"; then
+              echo >&2 "Error: branch '$wt_branch' (worktree '$wt_name') is not merged into '$default_branch'. Use -B to force delete."
+              return 1
+            fi
+          fi
+
+          # Store validated data
+          worktree_paths+=("$wt_path")
+          branch_names+=("$wt_branch")
+          # Use branch name for window name to match normal mode behavior
+          # (in normal mode, window name is based on branch which equals the argument)
+          window_names+=("$repo_name/$wt_branch")
+        done
+
+        # ====================================================================
+        # PHASE 2: EXECUTION - All validations passed, proceed with deletions
+        # ====================================================================
+        # Process each worktree (bash uses 0-indexed arrays, zsh uses 1-indexed)
+        local start_idx=0
+        [[ -n "${ZSH_VERSION:-}" ]] && start_idx=1
+
+        local idx=$start_idx
+        local end_idx=$((start_idx + ${#worktree_paths[@]}))
+        while [[ $idx -lt $end_idx ]]; do
+          local wt_path="${worktree_paths[$idx]}"
+          local branch="${branch_names[$idx]}"
+          local window_name="${window_names[$idx]}"
+
+          # Remove worktree if requested
+          if [[ $delete_worktree -eq 1 ]]; then
+            cd "$parent_dir"
+            git -C "$git_root" worktree remove "$wt_path" || {
+              echo >&2 "Warning: failed to remove worktree at '$wt_path'"
             }
           fi
-        fi
-      fi
 
-      # Smart window handling: rename if last window, otherwise kill
-      if [[ -n "$TMUX" ]]; then
-        local window_count=$(tmux list-windows | wc -l)
-        if [[ $window_count -eq 1 ]]; then
-          # Last window: navigate to parent and rename to shell name
-          cd ..
-          local shell_name=$(basename "${SHELL:-zsh}")
-          tmux rename-window "$shell_name"
-        else
-          # Not last window: kill as usual
-          tmux kill-window
-        fi
+          # Delete local branch if requested
+          if [[ -n "$branch" && $delete_local -gt 0 ]]; then
+            if [[ $delete_local -eq 1 ]]; then
+              # Safe delete (already validated above)
+              git -C "$git_root" branch -d "$branch" || {
+                echo >&2 "Warning: failed to delete branch '$branch'"
+              }
+            else
+              # Force delete
+              git -C "$git_root" branch -D "$branch" || {
+                echo >&2 "Warning: failed to force delete branch '$branch'"
+              }
+            fi
+
+            # Delete remote branch if requested
+            if [[ $delete_remote -eq 1 ]]; then
+              if git -C "$git_root" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+                git -C "$git_root" push origin --delete "$branch" || {
+                  echo >&2 "Warning: failed to delete remote branch 'origin/$branch'"
+                }
+              fi
+            fi
+          fi
+
+          # Close tmux window for this worktree
+          if [[ -n "$TMUX" ]]; then
+            # Get the actual session name using tmux
+            local tmux_session
+            tmux_session="$(tmux display-message -p '#S')"
+
+            # Get window index by exact name match
+            local window_index
+            window_index=$(tmux list-windows -t "$tmux_session" -F "#{window_index} #W" 2>/dev/null | \
+              awk -v name="$window_name" '{
+                win_name = substr($0, index($0, " ") + 1);
+                if (win_name == name) {print $1; exit}
+              }')
+
+            if [[ -n "$window_index" ]]; then
+              tmux kill-window -t "$tmux_session:$window_index" 2>/dev/null || true
+            fi
+          fi
+
+          idx=$((idx + 1))
+        done
+
+        # Note: No smart window handling for multi-worktree mode.
+        # When deleting specific worktrees by name, the user stays in their current window.
       fi
       ;;
 
@@ -234,7 +394,7 @@ gwtmux() {
     normal)
       # ========================================================================
       # NORMAL MODE: create a git worktree from branch or pr number in new tmux window
-      # Usage: gwtmux [<branch_or_pr>]
+      # Usage: gwtmux [<branch_or_pr>...]
       # ========================================================================
 
       local -r git_cmd="git"
@@ -253,7 +413,7 @@ gwtmux() {
         can_reuse_window=1
       fi
 
-      if [[ -z "$1" ]]; then
+      if [[ $# -eq 0 ]]; then
         # Multi-worktree mode - only works from ../default
         if [[ ! -d "default/.git" ]]; then
           echo >&2 "Error: branch or PR number required"
@@ -289,6 +449,7 @@ gwtmux() {
         return 0
       fi
 
+      # Find git root once for all arguments
       local git_common_dir git_root
       if $git_cmd rev-parse --git-dir &>/dev/null; then
         git_common_dir="$($git_cmd rev-parse --git-common-dir)"
@@ -306,69 +467,96 @@ gwtmux() {
         return 1
       fi
 
+      # Fetch once before processing all arguments
       $git_cmd -C "$git_root" fetch -a
-      local branch
-      branch="$(
-        (cd "$git_root" 2>/dev/null && GH_PAGER= gh pr view "$1" --json headRefName --jq '.headRefName') 2>/dev/null
-      )"
-      [[ -z "$branch" ]] && branch="$1"
 
       local repo_name="$(basename "$(dirname -- "$git_root")")"
-      local window_name="$repo_name/$branch"
-
-      if tmux list-windows -F "#W" | grep -Fxq -- "$window_name"; then
-        tmux select-window -t "$window_name"
-        return 0
+      local default_branch
+      default_branch="$(
+        $git_cmd -C "$git_root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null |
+          sed 's|^origin/||'
+      )"
+      if [[ -z "$default_branch" ]]; then
+        if $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/main; then
+          default_branch="main"
+        elif $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/master; then
+          default_branch="master"
+        else
+          default_branch="main" # ultimate fallback
+        fi
       fi
 
-      local dir_branch="${branch//\//_}"
-      local -r worktree_path="$(dirname -- "$git_root")/$dir_branch"
-      local worktree_exists=0
-      if $git_cmd -C "$git_root" worktree list --porcelain |
-        awk '/^worktree /{print substr($0,10)}' |
-        grep -Fxq -- "$worktree_path"; then
-        worktree_exists=1
-      fi
+      # Track if any worktree succeeded (for window reuse logic)
+      local success_count=0
 
-      if [[ $worktree_exists -eq 0 ]]; then
-        local has_local has_remote
-        $git_cmd -C "$git_root" show-ref --verify --quiet "refs/heads/$branch"
-        has_local=$?
-        $git_cmd -C "$git_root" show-ref --verify --quiet "refs/remotes/origin/$branch"
-        has_remote=$?
-        local default_branch
-        default_branch="$(
-          $git_cmd -C "$git_root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null |
-            sed 's|^origin/||'
+      # Process each argument
+      for arg in "$@"; do
+        # Resolve branch name (try gh pr first, fall back to arg)
+        local branch
+        branch="$(
+          (cd "$git_root" 2>/dev/null && GH_PAGER= gh pr view "$arg" --json headRefName --jq '.headRefName') 2>/dev/null
         )"
-        if [[ -z "$default_branch" ]]; then
-          if $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/main; then
-            default_branch="main"
-          elif $git_cmd -C "$git_root" show-ref --verify --quiet refs/remotes/origin/master; then
-            default_branch="master"
+        [[ -z "$branch" ]] && branch="$arg"
+
+        local window_name="$repo_name/$branch"
+
+        # If window already exists, just select it
+        if tmux list-windows -F "#W" | grep -Fxq -- "$window_name"; then
+          tmux select-window -t "$window_name"
+          success_count=$((success_count + 1))
+          continue
+        fi
+
+        local dir_branch="${branch//\//_}"
+        local worktree_path="$(dirname -- "$git_root")/$dir_branch"
+        local worktree_exists=0
+        if $git_cmd -C "$git_root" worktree list --porcelain |
+          awk '/^worktree /{print substr($0,10)}' |
+          grep -Fxq -- "$worktree_path"; then
+          worktree_exists=1
+        fi
+
+        # Create worktree if it doesn't exist
+        if [[ $worktree_exists -eq 0 ]]; then
+          local has_local has_remote
+          $git_cmd -C "$git_root" show-ref --verify --quiet "refs/heads/$branch"
+          has_local=$?
+          $git_cmd -C "$git_root" show-ref --verify --quiet "refs/remotes/origin/$branch"
+          has_remote=$?
+
+          local rc=0
+          if [[ $has_local -eq 0 ]]; then
+            $git_cmd -C "$git_root" worktree add --quiet -- "$worktree_path" "$branch" || rc=$?
+          elif [[ $has_remote -eq 0 ]]; then
+            $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "origin/$branch" || rc=$?
           else
-            default_branch="main" # ultimate fallback
+            $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "$default_branch" || rc=$?
+          fi
+          if [[ $rc -ne 0 ]]; then
+            echo >&2 "Warning: failed to create worktree for '$branch', skipping"
+            continue
           fi
         fi
-        local rc=0
-        if [[ $has_local -eq 0 ]]; then
-          $git_cmd -C "$git_root" worktree add --quiet -- "$worktree_path" "$branch" || rc=$?
-        elif [[ $has_remote -eq 0 ]]; then
-          $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "origin/$branch" || rc=$?
-        else
-          $git_cmd -C "$git_root" worktree add --quiet -b "$branch" -- "$worktree_path" "$default_branch" || rc=$?
-        fi
-        if [[ $rc -ne 0 ]]; then
-          echo >&2 "Error: failed to create worktree for '$branch'."
-          return $rc
-        fi
-      fi
 
-      if [[ $can_reuse_window -eq 1 ]]; then
-        tmux rename-window "$window_name"
-        cd "$worktree_path"
-      else
-        tmux new-window -n "$window_name" -c "$worktree_path"
+        # Create or reuse window
+        if [[ $success_count -eq 0 && $can_reuse_window -eq 1 ]]; then
+          tmux rename-window "$window_name"
+          cd "$worktree_path"
+        else
+          tmux new-window -n "$window_name" -c "$worktree_path"
+        fi
+
+        success_count=$((success_count + 1))
+      done
+
+      # Kill original zsh window only if we succeeded with at least one worktree
+      # and we didn't reuse it (reuse happens when success_count > 0 and can_reuse_window was 1)
+      if [[ $success_count -gt 0 && $can_reuse_window -eq 1 ]]; then
+        # Window was already reused, don't kill it
+        :
+      elif [[ $success_count -gt 0 && $can_reuse_window -eq 0 ]]; then
+        # Created new windows but didn't reuse, nothing to do
+        :
       fi
       ;;
   esac

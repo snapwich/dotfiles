@@ -374,6 +374,105 @@ myrepo/existing"
 }
 
 # ----------------------------------------------------------------------------
+# Multiple arguments
+# ----------------------------------------------------------------------------
+
+@test "gwtmux: creates multiple worktrees from multiple arguments" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  tmux send-keys -t "$TEST_SESSION" "cd $MAIN_REPO && gwtmux feature-1 feature-2 feature-3" Enter
+  sleep 0.5
+
+  # All worktrees should be created
+  assert_dir_exists "$WORKTREE_PARENT/feature-1"
+  assert_dir_exists "$WORKTREE_PARENT/feature-2"
+  assert_dir_exists "$WORKTREE_PARENT/feature-3"
+
+  # All windows should exist
+  run get_tmux_windows
+  assert_output --partial "myrepo/feature-1"
+  assert_output --partial "myrepo/feature-2"
+  assert_output --partial "myrepo/feature-3"
+}
+
+@test "gwtmux: continues on error when one argument fails" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create a file where one worktree would be created (will cause failure)
+  touch "$WORKTREE_PARENT/conflict"
+
+  tmux send-keys -t "$TEST_SESSION" "cd $MAIN_REPO && gwtmux good-1 conflict good-2" Enter
+  sleep 0.5
+
+  # Should create the valid worktrees
+  assert_dir_exists "$WORKTREE_PARENT/good-1"
+  assert_dir_exists "$WORKTREE_PARENT/good-2"
+
+  # Should have windows for successful ones
+  run get_tmux_windows
+  assert_output --partial "myrepo/good-1"
+  assert_output --partial "myrepo/good-2"
+
+  # Conflict worktree should NOT be created
+  refute [ -d "$WORKTREE_PARENT/conflict" ] || assert [ -f "$WORKTREE_PARENT/conflict" ]
+}
+
+@test "gwtmux: selects existing windows when worktrees already exist" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create worktrees first
+  git worktree add -b existing-1 "$WORKTREE_PARENT/existing-1" main >/dev/null 2>&1
+  git worktree add -b existing-2 "$WORKTREE_PARENT/existing-2" main >/dev/null 2>&1
+
+  # Create windows for them
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/existing-1" -c "$WORKTREE_PARENT/existing-1" 2>/dev/null
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/existing-2" -c "$WORKTREE_PARENT/existing-2" 2>/dev/null
+
+  local window_count_before=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+
+  # Try to create both plus a new one
+  local first_window=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
+  tmux send-keys -t "$first_window" "cd $MAIN_REPO && gwtmux existing-1 existing-2 new-one" Enter
+  sleep 0.3
+
+  # Should have one more window (new-one), not duplicates
+  local window_count_after=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert_equal "$((window_count_before + 1))" "$window_count_after"
+
+  # new-one worktree should be created
+  assert_dir_exists "$WORKTREE_PARENT/new-one"
+}
+
+@test "gwtmux: reuses zsh window for first success, creates new for rest" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Rename window to zsh
+  local first_window=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
+  tmux rename-window -t "$first_window" "zsh"
+
+  local initial_window_count=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+
+  tmux send-keys -t "$first_window" "cd $MAIN_REPO && gwtmux feat-a feat-b" Enter
+  sleep 0.3
+
+  # Should have 2 windows total (reused one, created one new)
+  local final_window_count=$(tmux list-windows -t "$TEST_SESSION" | wc -l)
+  assert_equal "$((initial_window_count + 1))" "$final_window_count"
+
+  # Should not have zsh window anymore
+  run get_tmux_windows
+  refute_output --partial "zsh"
+
+  # Should have both feature windows
+  assert_output --partial "myrepo/feat-a"
+  assert_output --partial "myrepo/feat-b"
+}
+
+# ----------------------------------------------------------------------------
 # Default branch detection
 # ----------------------------------------------------------------------------
 
@@ -1033,17 +1132,6 @@ myrepo/existing"
   assert_output --partial "unknown option"
 }
 
-@test "gwtmux -d: errors on unknown argument" {
-  setup_worktree_structure "myrepo"
-  cd "$MAIN_REPO"
-
-  git worktree add -b test-wt "$WORKTREE_PARENT/test-wt" main >/dev/null 2>&1
-  cd "$WORKTREE_PARENT/test-wt"
-
-  run gwtmux -d invalid-arg
-  assert_failure
-  assert_output --partial "unknown argument"
-}
 
 # ----------------------------------------------------------------------------
 # New window handling functionality
@@ -1145,4 +1233,196 @@ myrepo/existing"
   # Window should be killed
   local window_count_after=$(tmux list-windows -t "$TEST_SESSION" 2>/dev/null | wc -l)
   assert [ "$window_count_after" -lt "$window_count_before" ]
+}
+
+# ----------------------------------------------------------------------------
+# Multiple arguments for -d mode
+# ----------------------------------------------------------------------------
+
+@test "gwtmux -d: deletes multiple worktrees with -wB flags" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create multiple worktrees (matching dir and branch names, as gwtmux does)
+  git worktree add "$WORKTREE_PARENT/wt-1" -b wt-1 main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/wt-1"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "test1" >test1.txt
+  git add test1.txt
+  git commit -m "Test 1" >/dev/null 2>&1
+
+  cd "$MAIN_REPO"
+  git worktree add "$WORKTREE_PARENT/wt-2" -b wt-2 main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/wt-2"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "test2" >test2.txt
+  git add test2.txt
+  git commit -m "Test 2" >/dev/null 2>&1
+
+  # Create windows for them
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/wt-1" -c "$WORKTREE_PARENT/wt-1" 2>/dev/null
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/wt-2" -c "$WORKTREE_PARENT/wt-2" 2>/dev/null
+
+  # Run from main repo (not using tmux send-keys - run directly)
+  cd "$MAIN_REPO"
+
+  # Run directly in this shell (not via tmux send-keys)
+  run gwtmux -dwB wt-1 wt-2
+
+  # Check if it worked
+  echo "gwtmux exit code: $status"
+  echo "gwtmux output: $output"
+
+  # Both worktrees should be removed
+  refute [ -d "$WORKTREE_PARENT/wt-1" ]
+  refute [ -d "$WORKTREE_PARENT/wt-2" ]
+
+  # Both branches should be deleted
+  run git -C "$MAIN_REPO" branch
+  refute_output --partial "wt-1"
+  refute_output --partial "wt-2"
+}
+
+@test "gwtmux -d: validates all branches before deleting any (safe mode)" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create two worktrees - we'll try to delete both with safe delete
+  # One will be "merged" (actually we'll just use force delete for merged one separately)
+  git worktree add "$WORKTREE_PARENT/wt-good" -b wt-good main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/wt-good"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "good" >good.txt
+  git add good.txt
+  git commit -m "Good" >/dev/null 2>&1
+
+  # Create second worktree
+  cd "$MAIN_REPO"
+  git worktree add "$WORKTREE_PARENT/wt-bad" -b wt-bad main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/wt-bad"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "bad" >bad.txt
+  git add bad.txt
+  git commit -m "Bad" >/dev/null 2>&1
+
+  # Try to delete both with safe delete - should fail because neither is merged
+  cd "$MAIN_REPO"
+  run gwtmux -dwb wt-good wt-bad
+  assert_failure
+  assert_output --partial "not merged"
+
+  # Both worktrees should still exist (atomic operation - neither deleted)
+  assert_dir_exists "$WORKTREE_PARENT/wt-good"
+  assert_dir_exists "$WORKTREE_PARENT/wt-bad"
+
+  # Both branches should still exist
+  run git -C "$MAIN_REPO" branch
+  assert_output --partial "wt-good"
+  assert_output --partial "wt-bad"
+}
+
+@test "gwtmux -d: closes windows for all specified worktrees" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create multiple worktrees (using same name for dir and branch, as gwtmux normal mode does)
+  git worktree add "$WORKTREE_PARENT/wt-a" -b wt-a main >/dev/null 2>&1
+  git worktree add "$WORKTREE_PARENT/wt-b" -b wt-b main >/dev/null 2>&1
+
+  # Create windows for them (named after branches, as gwtmux does)
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/wt-a" -c "$WORKTREE_PARENT/wt-a" 2>/dev/null
+  tmux new-window -t "$TEST_SESSION" -n "myrepo/wt-b" -c "$WORKTREE_PARENT/wt-b" 2>/dev/null
+
+  # Verify windows exist
+  run get_tmux_windows
+  assert_output --partial "myrepo/wt-a"
+  assert_output --partial "myrepo/wt-b"
+
+  # Delete both (without worktree/branch deletion, just window management)
+  cd "$MAIN_REPO"
+
+  # Run directly (not via tmux send-keys)
+  run gwtmux -d wt-a wt-b
+
+  # Windows should be closed
+  run get_tmux_windows
+  refute_output --partial "myrepo/wt-a"
+  refute_output --partial "myrepo/wt-b"
+}
+
+@test "gwtmux -d: errors if any worktree doesn't exist" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create only one worktree
+  git worktree add "$WORKTREE_PARENT/exists" -b exists-branch main >/dev/null 2>&1
+
+  # Try to delete one that exists and one that doesn't
+  run gwtmux -d exists nonexistent
+  assert_failure
+  assert_output --partial "does not exist"
+  assert_output --partial "nonexistent"
+
+  # Should not delete the one that exists (atomic operation)
+  assert_dir_exists "$WORKTREE_PARENT/exists"
+}
+
+@test "gwtmux -d: handles slash conversion in worktree names" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create worktree with slash in branch name
+  git worktree add "$WORKTREE_PARENT/feature_fix" -b feature/fix main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/feature_fix"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "test" >test.txt
+  git add test.txt
+  git commit -m "Test" >/dev/null 2>&1
+
+  # Delete using original branch name with slash (use force delete)
+  cd "$MAIN_REPO"
+  run gwtmux -dwB feature/fix
+  assert_success
+
+  # Worktree should be deleted
+  refute [ -d "$WORKTREE_PARENT/feature_fix" ]
+
+  # Branch should be deleted
+  run git -C "$MAIN_REPO" branch
+  refute_output --partial "feature/fix"
+}
+
+@test "gwtmux -d: backward compatibility - no args uses current worktree" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  git worktree add "$WORKTREE_PARENT/test-wt" -b test-branch main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/test-wt"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "test" >test.txt
+  git add test.txt
+  git commit -m "Test" >/dev/null 2>&1
+
+  # Merge for safe delete
+  cd "$MAIN_REPO"
+  git checkout main >/dev/null 2>&1
+  git merge test-branch >/dev/null 2>&1
+
+  cd "$WORKTREE_PARENT/test-wt"
+  local new_window=$(tmux new-window -t "$TEST_SESSION" -n "myrepo/test-branch" -c "$WORKTREE_PARENT/test-wt" -P -F "#{window_id}")
+
+  # Run without arguments (original behavior)
+  tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -dwb" Enter
+  sleep 0.3
+
+  # Should delete current worktree
+  refute [ -d "$WORKTREE_PARENT/test-wt" ]
+  run git -C "$MAIN_REPO" branch
+  refute_output --partial "test-branch"
 }
