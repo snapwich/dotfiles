@@ -51,3 +51,6 @@ vim.keymap.set('n', '<leader>we', function()
 end, { desc = 'Focus snacks explorer' })
 
 vim.keymap.set('n', '<leader>wp', "<C-w>p", { desc = 'Previous window' })
+
+vim.keymap.set('n', '<leader>b[', ":BufferLineMovePrev<CR>", { desc = "Move current buffer left" })
+vim.keymap.set('n', '<leader>b]', ":BufferLineMoveNext<CR>", { desc = "Move current buffer right" })
