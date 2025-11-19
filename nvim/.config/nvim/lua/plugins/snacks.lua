@@ -79,7 +79,7 @@ return {
             ignored = true,
             layout = {
               layout = {
-                width = 0.15,
+                width = 40,
                 height = 1,
                 position = "right",
               },
