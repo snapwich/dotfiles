@@ -59,6 +59,12 @@ return {
         },
       },
       picker = {
+        layout = {
+          layout = {
+            width = 0.95,
+            height = 0.95,
+          }
+        },
         win = {
           input = {
             keys = {
@@ -73,6 +79,8 @@ return {
             ignored = true,
             layout = {
               layout = {
+                width = 0.15,
+                height = 1,
                 position = "right",
               },
             },
