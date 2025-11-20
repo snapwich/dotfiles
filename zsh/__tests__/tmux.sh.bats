@@ -1426,3 +1426,32 @@ myrepo/existing"
   run git -C "$MAIN_REPO" branch
   refute_output --partial "test-branch"
 }
+
+@test "gwtmux -d: stays in worktree when deletion fails with uncommitted changes" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  git worktree add "$WORKTREE_PARENT/test-wt" -b test-branch main >/dev/null 2>&1
+  cd "$WORKTREE_PARENT/test-wt"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+
+  # Create uncommitted changes
+  echo "uncommitted" >uncommitted.txt
+  git add uncommitted.txt
+
+  # Try to delete worktree (should fail)
+  run gwtmux -dwB
+  assert_failure
+  assert_output --partial "modified or untracked files"
+
+  # Should still be in the original worktree directory
+  assert_equal "$PWD" "$WORKTREE_PARENT/test-wt"
+
+  # Worktree should still exist
+  assert_dir_exists "$WORKTREE_PARENT/test-wt"
+
+  # Branch should still exist
+  run git -C "$MAIN_REPO" branch
+  assert_output --partial "test-branch"
+}

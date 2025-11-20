@@ -124,8 +124,13 @@ gwtmux() {
 
         # Remove worktree if requested
         if [[ $delete_worktree -eq 1 ]]; then
+          local original_dir="$PWD"
           cd "$(dirname "$git_common_dir")"
-          git worktree remove "$worktree_root" || return $?
+          git worktree remove "$worktree_root" || {
+            local rc=$?
+            cd "$original_dir"
+            return $rc
+          }
         fi
 
         # Delete local branch if requested
@@ -246,9 +251,11 @@ gwtmux() {
 
           # Remove worktree if requested
           if [[ $delete_worktree -eq 1 ]]; then
+            local original_dir="$PWD"
             cd "$parent_dir"
             git -C "$git_root" worktree remove "$wt_path" || {
               echo >&2 "Warning: failed to remove worktree at '$wt_path'"
+              cd "$original_dir"
             }
           fi
 
