@@ -35,26 +35,29 @@ end
 return {
   "mtrajano/tssorter.nvim",
   version = "*",
+  config = function(_, opts)
+    local tssorter = require("tssorter")
+    tssorter.setup(opts)
 
-  -- 1) keymaps live in the plugin spec
-  keys = {
-    {
-      "<leader>cs",
-      function()
+    vim.api.nvim_create_user_command("TSSortIgnoreCase", function(cmd)
+      local arg = (cmd.args or ""):lower()
+
+      if arg == "true" or arg == "1" then
         ignore_case = true
-        require("tssorter").sort()
-      end,
-      desc = "Sort code (TSSort, case-insensitive)",
-    },
-    {
-      "<leader>cS",
-      function()
+      elseif arg == "false" or arg == "0" then
         ignore_case = false
-        require("tssorter").sort()
+      else
+        vim.notify("TSSortIngoreCase: expected true/false", vim.log.levels.ERROR)
+        return
+      end
+    end, {
+      nargs = 1,
+      complete = function()
+        return { "true", "false" }
       end,
-      desc = "Sort code (TSSort, case-sensitive)",
-    },
-  },
+      desc = "Set TSSort case-sensitivity flag"
+    })
+  end,
 
   -- 2) wire the shared order_by into all sortables
   opts = {

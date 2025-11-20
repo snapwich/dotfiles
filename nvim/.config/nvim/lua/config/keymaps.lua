@@ -54,3 +54,8 @@ vim.keymap.set('n', '<leader>wp', "<C-w>p", { desc = 'Previous window' })
 
 vim.keymap.set('n', '<leader>b[', ":BufferLineMovePrev<CR>", { desc = "Move current buffer left" })
 vim.keymap.set('n', '<leader>b]', ":BufferLineMoveNext<CR>", { desc = "Move current buffer right" })
+
+vim.keymap.set('n', '<leader>cs', "<cmd>TSSortIgnoreCase true<cr><cmd>TSSort<cr>",
+  { desc = "Sort code (TSSort, case-insensitive)" })
+vim.keymap.set('n', '<leader>cS', "<cmd>TSSortIgnoreCase false<cr><cmd>TSSort<cr>",
+  { desc = "Sort code (TSSort, case-sensitive)" })
