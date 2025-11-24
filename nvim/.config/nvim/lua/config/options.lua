@@ -1,4 +1,6 @@
 vim.opt.relativenumber = false
+vim.opt.list = false
+
 vim.api.nvim_create_autocmd("ModeChanged", {
   callback = function()
     local m               = vim.api.nvim_get_mode().mode
