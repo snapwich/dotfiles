@@ -1,9 +1,13 @@
 local snacks = require "snacks"
 
+-- prevent copy on delete
 vim.keymap.set({ 'n', 'v' }, 'x', '"_x')
 vim.keymap.set({ 'n', 'v' }, 'd', '"_d')
 vim.keymap.set({ 'n', 'v' }, 'D', '"_D')
 vim.keymap.set({ 'n', 'v' }, 'c', '"_c')
+
+-- disable join command, it's useless
+vim.keymap.set({ 'n', 'v' }, 'J', '<nop>')
 
 vim.keymap.set('n', '<leader>yp', function()
   local abs_path = vim.fn.expand('%:p')
