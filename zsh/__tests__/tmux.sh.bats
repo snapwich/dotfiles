@@ -1428,7 +1428,7 @@ myrepo/existing"
 
   # Execute via tmux send-keys so gwtmux has proper tmux context
   tmux send-keys -t "$window_id" "cd $MAIN_REPO && gwtmux -d wt-a wt-b" Enter
-  sleep 0.3
+  sleep 0.5
 
   # Windows should be closed
   run get_tmux_windows
@@ -1501,7 +1501,7 @@ myrepo/existing"
 
   # Run without arguments (original behavior)
   tmux send-keys -t "$new_window" "cd $WORKTREE_PARENT/test-wt && gwtmux -dwb" Enter
-  sleep 0.3
+  sleep 0.5
 
   # Should delete current worktree
   refute [ -d "$WORKTREE_PARENT/test-wt" ]
