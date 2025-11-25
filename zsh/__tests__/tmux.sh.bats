@@ -250,6 +250,86 @@ teardown() {
 myrepo/existing"
 }
 
+@test "gwtmux: opens existing worktree via relative path" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create a worktree
+  git worktree add -b existing-wt "$WORKTREE_PARENT/existing-wt" main >/dev/null 2>&1
+
+  # Open the other worktree via relative path from default worktree
+  tmux send-keys -t "$TEST_SESSION" "cd $WORKTREE_PARENT/default && gwtmux ../existing-wt" Enter
+  sleep 0.3
+
+  # Window should exist
+  run get_tmux_windows
+  assert_output --partial "myrepo/existing-wt"
+}
+
+@test "gwtmux: opens existing worktree via absolute path" {
+  setup_worktree_structure "myrepo"
+  cd "$MAIN_REPO"
+
+  # Create a worktree
+  git worktree add -b existing-wt "$WORKTREE_PARENT/existing-wt" main >/dev/null 2>&1
+
+  # Open via absolute path
+  tmux send-keys -t "$TEST_SESSION" "cd $MAIN_REPO && gwtmux $WORKTREE_PARENT/existing-wt" Enter
+  sleep 0.3
+
+  # Window should exist
+  run get_tmux_windows
+  assert_output --partial "myrepo/existing-wt"
+}
+
+@test "gwtmux: opens worktree from different repo via path" {
+  setup_worktree_structure "myrepo"
+
+  # Create a second repo with worktree structure
+  local OTHER_REPO_PARENT="$TEST_TEMP_DIR/otherrepo"
+  mkdir -p "$OTHER_REPO_PARENT/default"
+  git init "$OTHER_REPO_PARENT/default" >/dev/null 2>&1
+  git -C "$OTHER_REPO_PARENT/default" config user.name "Test"
+  git -C "$OTHER_REPO_PARENT/default" config user.email "test@test.com"
+  echo "test" > "$OTHER_REPO_PARENT/default/file.txt"
+  git -C "$OTHER_REPO_PARENT/default" add .
+  git -C "$OTHER_REPO_PARENT/default" commit -m "init" >/dev/null 2>&1
+
+  # Create a worktree in the other repo
+  git -C "$OTHER_REPO_PARENT/default" worktree add -b feature "$OTHER_REPO_PARENT/feature" >/dev/null 2>&1
+
+  # From myrepo, open the other repo's worktree via relative path
+  tmux send-keys -t "$TEST_SESSION" "cd $WORKTREE_PARENT/default && gwtmux ../../otherrepo/feature" Enter
+  sleep 0.3
+
+  # Window should have correct repo name from the OTHER repo
+  run get_tmux_windows
+  assert_output --partial "otherrepo/feature"
+}
+
+@test "gwtmux: opens default worktree of different repo via path" {
+  setup_worktree_structure "myrepo"
+
+  # Create a second repo with worktree structure (default/.git is main repo)
+  local OTHER_REPO_PARENT="$TEST_TEMP_DIR/otherrepo"
+  mkdir -p "$OTHER_REPO_PARENT/default"
+  git init "$OTHER_REPO_PARENT/default" >/dev/null 2>&1
+  git -C "$OTHER_REPO_PARENT/default" config user.name "Test"
+  git -C "$OTHER_REPO_PARENT/default" config user.email "test@test.com"
+  echo "test" > "$OTHER_REPO_PARENT/default/file.txt"
+  git -C "$OTHER_REPO_PARENT/default" add .
+  git -C "$OTHER_REPO_PARENT/default" commit -m "init" >/dev/null 2>&1
+
+  # From myrepo, open the other repo's default worktree via relative path
+  # This tests the .git case where git-common-dir returns ".git"
+  tmux send-keys -t "$TEST_SESSION" "cd $WORKTREE_PARENT/default && gwtmux ../../otherrepo/default" Enter
+  sleep 0.3
+
+  # Window should have correct repo name "otherrepo" (not "default")
+  run get_tmux_windows
+  assert_output --regexp "otherrepo/(master|main)"
+}
+
 # ----------------------------------------------------------------------------
 # Multi-worktree mode (no arguments)
 # ----------------------------------------------------------------------------
@@ -1343,10 +1423,12 @@ myrepo/existing"
   assert_output --partial "myrepo/wt-b"
 
   # Delete both (without worktree/branch deletion, just window management)
-  cd "$MAIN_REPO"
+  # Get a window to run from (needs proper tmux context for display-message)
+  local window_id=$(tmux list-windows -t "$TEST_SESSION" -F "#{window_id}" | head -1)
 
-  # Run directly (not via tmux send-keys)
-  run gwtmux -d wt-a wt-b
+  # Execute via tmux send-keys so gwtmux has proper tmux context
+  tmux send-keys -t "$window_id" "cd $MAIN_REPO && gwtmux -d wt-a wt-b" Enter
+  sleep 0.3
 
   # Windows should be closed
   run get_tmux_windows
