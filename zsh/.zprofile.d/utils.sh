@@ -24,12 +24,13 @@ ssh-agents() {
   echo "$pids" | while read -r pid; do
     [ -z "$pid" ] && continue
 
+    # Get the first absolute path from lsof's UNIX-socket output
     socket="$(
       sudo lsof -n -P -U -a -p "$pid" 2>/dev/null | awk '
-        /unix/ {
-          # find the first field that looks like a path
+        NR == 1 { next }      # skip header
+        {
           for (i = 1; i <= NF; i++) {
-            if ($i ~ /^\//) {
+            if ($i ~ /^\//) { # first field that looks like a path
               print $i
               exit
             }
@@ -38,10 +39,22 @@ ssh-agents() {
       '
     )"
 
-    if [ -n "$socket" ]; then
-      echo "ssh-agent $pid $socket"
-    else
+    if [ -z "$socket" ]; then
       echo "ssh-agent $pid (no socket found)"
+      continue
+    fi
+
+    echo "ssh-agent $pid $socket"
+
+    # List identities for this agent
+    ids="$(SSH_AUTH_SOCK="$socket" ssh-add -l 2>/dev/null || true)"
+
+    if [ -n "$ids" ]; then
+      echo "$ids" | while IFS= read -r line; do
+        printf '\t%s\n' "$line"
+      done
+    else
+      printf '\t(no identities)\n'
     fi
   done
 }
