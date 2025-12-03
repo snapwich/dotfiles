@@ -15,3 +15,6 @@ fi
 
 alias k="kubectl"
 
+# prevent ctrl-d logout
+setopt ignore_eof
+
