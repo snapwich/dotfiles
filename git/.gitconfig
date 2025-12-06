@@ -17,3 +17,5 @@
   path = ~/.config/delta/themes.gitconfig
 [include]
   path = ~/.gitconfig.local
+[gpg]
+	format = ssh
