@@ -65,6 +65,10 @@ cmd_comments() {
   }
 }
 
+cmd_merge() {
+  gh pr merge --squash -t "$(gh pr view --json title | jq -r .title)"
+}
+
 case "${1:-}" in
 checks)
   cmd_checks
@@ -75,6 +79,9 @@ reviews)
 comments)
   cmd_comments "$@"
   ;;
+merge)
+  cmd_merge
+  ;;
 *)
   echo "Usage: gh my <command> [args]"
   echo ""
@@ -82,6 +89,7 @@ comments)
   echo "  checks - Show PR check status"
   echo "  reviews - Show PR review status"
   echo "  comments [pr-number] - Show PR review comments"
+  echo "  merge - Squash merge PR using PR title"
   exit 1
   ;;
 esac
