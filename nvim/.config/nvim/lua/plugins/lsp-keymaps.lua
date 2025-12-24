@@ -2,6 +2,11 @@ return {
   "neovim/nvim-lspconfig",
   opts = {
     servers = {
+      vtsls = {
+        keys = {
+          { "<leader>co", false },
+        }
+      },
       -- Apply these keymaps to all LSP servers
       ["*"] = {
         keys = {
