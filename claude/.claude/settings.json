@@ -28,7 +28,8 @@
       "mcp__playwright__browser_navigate",
       "Bash(gh pr checks -h)",
       "Bash(pnpm tsc)",
-      "Bash(pnpm tsc --noEmit)"
+      "Bash(pnpm tsc --noEmit)",
+      "Bash(xargs ls:*)"
     ],
     "deny": []
   },
