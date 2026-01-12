@@ -7,6 +7,9 @@ vim.keymap.set({ 'n', 'v' }, 'D', '"_D')
 vim.keymap.set({ 'n', 'v' }, 'c', '"_c')
 vim.keymap.set({ 'x' }, 'p', 'P')
 
+vim.keymap.set({ 'n', 'v' }, 'q', '<nop>')
+vim.keymap.set({ 'n', 'v' }, 'Q', '<nop>')
+
 -- disable join command, it's useless
 vim.keymap.set({ 'n', 'v' }, 'J', '<nop>')
 
