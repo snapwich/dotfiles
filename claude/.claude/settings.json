@@ -29,7 +29,8 @@
       "Bash(gh pr checks -h)",
       "Bash(pnpm tsc)",
       "Bash(pnpm tsc --noEmit)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   },
