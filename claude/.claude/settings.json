@@ -30,7 +30,18 @@
       "Bash(pnpm tsc)",
       "Bash(pnpm tsc --noEmit)",
       "Bash(xargs ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(fd:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl get events:*)",
+      "Bash(kubectl get pod:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(journalctl:*)",
+      "Bash(kubectl get:*)",
+      "WebFetch(domain:docs.cilium.io)",
+      "WebFetch(domain:codefresh.io)",
+      "Bash(tree:*)",
+      "WebFetch(domain:gateway-api.sigs.k8s.io)"
     ],
     "deny": []
   },
