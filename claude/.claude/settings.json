@@ -25,6 +25,7 @@
       "Bash(gh pr diff:*)",
       "Bash(gh pr ready)",
       "Bash(gh pr view --json url,title)",
+      "Bash(gh run view:*)",
       "Bash(mkdir:*)",
       "mcp__playwright__browser_navigate",
       "Bash(gh pr checks -h)",
