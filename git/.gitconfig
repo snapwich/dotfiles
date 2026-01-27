@@ -2,6 +2,7 @@
   diffs = -c delta.side-by-side=true diff
 [core]
   pager = delta
+	excludesFile = ~/.globalgitignore
 [interactive]
   diffFilter = "delta --color-only"
 [delta]

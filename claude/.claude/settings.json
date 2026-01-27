@@ -8,6 +8,7 @@
       "Bash(grep:*)",
       "Bash(pnpm info:*)",
       "Bash(diff:*)",
+      "Bash(git diff:*)",
       "Bash(pnpm test:unit:*)",
       "WebFetch(domain:mui.com)",
       "WebFetch(domain:github.com)",
