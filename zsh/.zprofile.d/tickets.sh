@@ -1,0 +1,1 @@
+export TICKET_PAGER=""
