@@ -20,3 +20,7 @@
   path = ~/.gitconfig.local
 [gpg]
 	format = ssh
+[init]
+	defaultBranch = main
+[commit]
+	gpgsign = true
