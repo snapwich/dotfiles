@@ -24,3 +24,5 @@
 	defaultBranch = main
 [commit]
 	gpgsign = true
+[log]
+	excludeDecoration = refs/tags/*
