@@ -1,5 +1,7 @@
 {
-  "model": "opus",
+  "env": {
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(find *)",
@@ -48,6 +50,7 @@
     ],
     "deny": []
   },
+  "model": "opus",
   "hooks": {
     "PostToolUse": [
       {
@@ -62,7 +65,10 @@
     ]
   },
   "alwaysThinkingEnabled": true,
+  "autoUpdatesChannel": "stable",
+  "skipDangerousModePermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1753996469248
-  }
+  },
+  "effortLevel": "high"
 }
