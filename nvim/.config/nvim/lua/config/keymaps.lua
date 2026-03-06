@@ -32,7 +32,7 @@ vim.keymap.set('n', '<leader>yP', function()
 end, { desc = 'Copy absolute file path:line number to clipboard' })
 
 vim.keymap.set('n', '<leader>tt', function()
-  snacks.terminal('zsh -l')
+  snacks.terminal('zsh -l', { cwd = vim.fn.expand('%:p:h') })
 end, { desc = 'Terminal zsh' })
 
 vim.keymap.set('n', '<leader>tk', function()
