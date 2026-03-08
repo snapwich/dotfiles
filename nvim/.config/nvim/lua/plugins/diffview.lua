@@ -23,6 +23,16 @@ return {
       end,
       desc = "Diffview: branch changes from origin/main or origin/master",
     },
+    {
+      "<leader>db",
+      function()
+        local ref = vim.fn.input("Base ref: ")
+        if ref ~= "" then
+          vim.cmd("DiffviewOpen " .. ref .. "...HEAD")
+        end
+      end,
+      desc = "Diffview: branch changes from custom base ref",
+    },
   },
   opts = {},
   lazy = false,
