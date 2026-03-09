@@ -15,6 +15,8 @@ fi
 
 alias k="kubectl"
 
+alias clauded="claude --dangerously-skip-permissions"
+
 # prevent ctrl-d logout
 setopt ignore_eof
 
