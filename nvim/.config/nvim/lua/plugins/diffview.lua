@@ -19,7 +19,7 @@ return {
           end
         end
 
-        vim.cmd("DiffviewOpen origin/" .. default_branch .. "...HEAD")
+        vim.cmd("DiffviewOpen origin/" .. default_branch .. "...HEAD --imply-local")
       end,
       desc = "Diffview: branch changes from origin/main or origin/master",
     },
