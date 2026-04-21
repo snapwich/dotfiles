@@ -58,6 +58,25 @@ document.querySelectorAll('code.language-mermaid').forEach((block, i) => {
 document.querySelectorAll('pre code[class^="language-"]').forEach(el => hljs.highlightElement(el));
 
 await mermaid.run({ querySelector: '.mermaid' });
+
+// Mermaid scales SVGs to fit the container, which can shrink text
+// below readability. Enlarge diagrams where text would be too small.
+const MIN_FONT_PX = 10;
+document.querySelectorAll('.mermaid svg').forEach(svg => {
+  const vb = svg.getAttribute('viewBox');
+  if (!vb) return;
+  const vbWidth = parseFloat(vb.split(' ')[2]);
+  const container = svg.parentElement.clientWidth;
+  const textEl = svg.querySelector('text, span');
+  if (!textEl) return;
+  const svgFontSize = parseFloat(getComputedStyle(textEl).fontSize);
+  const renderedFontSize = svgFontSize * container / vbWidth;
+  if (renderedFontSize < MIN_FONT_PX) {
+    const needed = Math.ceil(MIN_FONT_PX * vbWidth / svgFontSize);
+    svg.style.width = needed + 'px';
+    svg.style.maxWidth = 'none';
+  }
+});
 </script>
 </body>
 </html>`;
