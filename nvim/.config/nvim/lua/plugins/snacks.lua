@@ -1,5 +1,26 @@
 local custom_pickers = {}
 
+function custom_pickers.grep_quickfix()
+  local qflist = vim.fn.getqflist()
+  local files = {}
+  local seen = {}
+  for _, item in ipairs(qflist) do
+    local bufnr = item.bufnr
+    if bufnr and bufnr > 0 then
+      local name = vim.api.nvim_buf_get_name(bufnr)
+      if name ~= "" and not seen[name] then
+        seen[name] = true
+        files[#files + 1] = name
+      end
+    end
+  end
+  if #files == 0 then
+    vim.notify("Quickfix list is empty", vim.log.levels.WARN)
+    return
+  end
+  Snacks.picker.grep({ dirs = files })
+end
+
 function custom_pickers.git_diff_origin_default()
   -- Query the remote directly for its default branch
   local output = vim.fn.system("git ls-remote --symref origin HEAD 2>/dev/null")
@@ -95,7 +116,8 @@ return {
       },
     },
     keys = {
-      { "<leader>gm", custom_pickers.git_diff_origin_default, desc = "Git branch changed files vs default branch" }
+      { "<leader>gm", custom_pickers.git_diff_origin_default, desc = "Git branch changed files vs default branch" },
+      { "<leader>sq", custom_pickers.grep_quickfix, desc = "Grep Quickfix List Files" }
     }
   },
 }
