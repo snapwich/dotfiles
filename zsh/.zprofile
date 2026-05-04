@@ -7,6 +7,8 @@ export PATH="$PATH:$HOME/n/bin"
 export VISUAL=nvim
 export EDITOR="$VISUAL"
 
+export TZ="America/Denver"
+
 if [ -d "$HOME/.zprofile.d" ]; then
   for f in "$HOME/.zprofile.d"/*; do
     [ -f "$f" ] && [ -r "$f" ] && . "$f"
