@@ -50,7 +50,7 @@
     ],
     "deny": []
   },
-  "model": "opus",
+  "model": "opus[1m]",
   "hooks": {
     "PostToolUse": [
       {
@@ -65,10 +65,11 @@
     ]
   },
   "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
   "autoUpdatesChannel": "stable",
   "skipDangerousModePermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1753996469248
   },
-  "effortLevel": "high"
+  "preferredNotifChannel": "terminal_bell"
 }
