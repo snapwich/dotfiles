@@ -94,6 +94,7 @@ return {
     { "<leader>on", "<cmd>Obsidian new<cr>",                      desc = "New note" },
     { "<leader>ot", "<cmd>Obsidian today<cr>",                    desc = "Daily Today" },
     { "<leader>oy", "<cmd>Obsidian yesterday<cr>",                desc = "Daily Yesterday" },
+    { "<leader>oo", "<cmd>Obsidian tomorrow<cr>",                 desc = "Daily Tomorrow" },
     { "<leader>os", "<cmd>Obsidian search<cr>",                   desc = "Search Note Contents" },
     { "<leader>of", "<cmd>Obsidian quick_switch<cr>",             desc = "Search Note Names" },
     { "<leader>oa", "<cmd>Obsidian tags<cr>",                     desc = "Search Tags" },
