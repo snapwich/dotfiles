@@ -74,6 +74,48 @@ local function run_for_all_vaults(label, build_script)
   end
 end
 
+local function search_aliases()
+  local search = require("obsidian.search")
+  local api = require("obsidian.api")
+  local dir = api.resolve_workspace_dir()
+  search.find_notes_async("", function(notes)
+    ---@type obsidian.PickerEntry[]
+    local entries = {}
+    for _, note in ipairs(notes) do
+      if note.aliases and #note.aliases > 0 then
+        local stat = note.path and vim.uv.fs_stat(tostring(note.path))
+        local mtime = stat and stat.mtime.sec or 0
+        local rel = note.path and note.path:vault_relative_path() or ""
+        local folder = vim.fn.fnamemodify(rel, ":h")
+        local aliases_str = table.concat(note.aliases, ", ")
+        local text = folder ~= "." and string.format("%s/%s", folder, aliases_str) or aliases_str
+        entries[#entries + 1] = {
+          value = { path = note.path, line = 1 },
+          text = text,
+          ordinal = aliases_str,
+          filename = tostring(note.path),
+          _mtime = mtime,
+        }
+      end
+    end
+    table.sort(entries, function(a, b)
+      return a._mtime > b._mtime
+    end)
+    if vim.tbl_isempty(entries) then
+      vim.notify("No aliases found", vim.log.levels.WARN)
+      return
+    end
+    vim.schedule(function()
+      Obsidian.picker.pick(entries, {
+        prompt_title = "Aliases",
+        format_item = function(entry)
+          return entry.text or ""
+        end,
+      })
+    end)
+  end, { dir = dir })
+end
+
 local function vault_push_all()
   run_for_all_vaults("Vault push", function(vault_root, datetime)
     local message = string.format("vault backup: %s", datetime)
@@ -124,7 +166,8 @@ return {
     { "<leader>oo", "<cmd>Obsidian tomorrow<cr>",                 desc = "Daily Tomorrow" },
     { "<leader>os", "<cmd>Obsidian search<cr>",                   desc = "Search Note Contents" },
     { "<leader>of", "<cmd>Obsidian quick_switch<cr>",             desc = "Search Note Names" },
-    { "<leader>oa", "<cmd>Obsidian tags<cr>",                     desc = "Search Tags" },
+    { "<leader>og", "<cmd>Obsidian tags<cr>",                     desc = "Search Tags" },
+    { "<leader>oa", search_aliases,                               desc = "Search Aliases" },
     { "<leader>ob", "<cmd>Obsidian backlinks<cr>",                desc = "Show Backlinks" },
     { "<leader>ol", "<cmd>Obsidian links<cr>",                    desc = "Show Links in document" },
     { "<leader>oc", "<cmd>Obsidian toc<cr>",                      desc = "Table of Contents" },
