@@ -16,6 +16,29 @@ end, {
   },
 })
 
+local default_workspace = vim.env.OBSIDIAN_WORKSPACE
+if default_workspace then
+  for i, ws in ipairs(workspaces) do
+    if ws.name == default_workspace then
+      table.remove(workspaces, i)
+      table.insert(workspaces, 1, ws)
+      break
+    end
+  end
+end
+
+local function apply_default_workspace()
+  if not default_workspace then
+    return
+  end
+  for _, ws in ipairs(Obsidian.workspaces or {}) do
+    if ws.name == default_workspace then
+      require("obsidian.workspace").set(ws)
+      return
+    end
+  end
+end
+
 local function run_for_all_vaults(label, build_script)
   local datetime = os.date("%Y-%m-%d %H:%M:%S")
   local total = #workspaces
@@ -89,6 +112,10 @@ return {
       workdays_only = false,
     },
   },
+  config = function(_, opts)
+    require("obsidian").setup(opts)
+    apply_default_workspace()
+  end,
   cmd = { "Obsidian" },
   keys = {
     { "<leader>on", "<cmd>Obsidian new<cr>",                      desc = "New note" },
