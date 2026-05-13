@@ -26,3 +26,5 @@
 	gpgsign = true
 [log]
 	excludeDecoration = refs/tags/*
+[gpg "ssh"]
+	allowedSignersFile = ~/.ssh/allowed_signers
