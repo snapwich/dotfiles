@@ -171,6 +171,7 @@ return {
 	cmd = { "Obsidian" },
 	keys = {
 		{ "<leader>on", "<cmd>Obsidian new<cr>", desc = "New note" },
+		{ "<leader>od", "<cmd>Obsidian dailies<cr>", desc = "Daily note picker" },
 		{ "<leader>ot", "<cmd>Obsidian today<cr>", desc = "Daily Today" },
 		{ "<leader>oy", "<cmd>Obsidian yesterday<cr>", desc = "Daily Yesterday" },
 		{ "<leader>oo", "<cmd>Obsidian tomorrow<cr>", desc = "Daily Tomorrow" },
