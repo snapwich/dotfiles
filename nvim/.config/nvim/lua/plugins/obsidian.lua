@@ -134,6 +134,7 @@ local function vault_push_all()
 				vault_root,
 				message
 			),
+			string.format("git -C %q pull --rebase", vault_root),
 			string.format("git -C %q push", vault_root),
 		}, " && ")
 	end)
