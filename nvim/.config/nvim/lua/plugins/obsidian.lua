@@ -7,7 +7,7 @@ end, {
 	},
 	{
 		name = "_dev-notes",
-		path = "/home/dev/repos/obsidian-tasks.nvim/ot-42wz-f9-render-rework-bufwritecmd-manual-folds-leader-keymap-interaction/tests/fixtures/vault",
+		path = "/home/dev/repos/obsidian-tasks.nvim/default/tests/fixtures/vault",
 	},
 	{
 		name = "work-notes",
