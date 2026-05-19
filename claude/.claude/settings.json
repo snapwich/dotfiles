@@ -73,8 +73,8 @@
   "autoUpdatesChannel": "stable",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "preferredNotifChannel": "terminal_bell",
   "feedbackSurveyState": {
     "lastShownTime": 1753996469248
-  }
+  },
+  "preferredNotifChannel": "terminal_bell"
 }
