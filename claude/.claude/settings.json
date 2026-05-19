@@ -64,13 +64,17 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "jq -r '\"ctx \\((.context_window.used_percentage // 0) | floor)% · \\(((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)) / 1000 | floor)k tokens\"'"
+  },
   "alwaysThinkingEnabled": true,
   "effortLevel": "high",
   "autoUpdatesChannel": "stable",
+  "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "preferredNotifChannel": "terminal_bell",
   "feedbackSurveyState": {
     "lastShownTime": 1753996469248
-  },
-  "tui": "fullscreen"
+  }
 }
