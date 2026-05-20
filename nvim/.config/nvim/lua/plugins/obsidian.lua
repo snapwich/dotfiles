@@ -123,8 +123,8 @@ local function search_aliases()
 	end, { dir = dir })
 end
 
-local function vault_push_all()
-	run_for_all_vaults("Vault push", function(vault_root, datetime)
+local function vault_sync_all()
+	run_for_all_vaults("Vault sync", function(vault_root, datetime)
 		local message = string.format("vault backup: %s", datetime)
 		return table.concat({
 			string.format("git -C %q add -A", vault_root),
@@ -137,12 +137,6 @@ local function vault_push_all()
 			string.format("git -C %q pull --rebase", vault_root),
 			string.format("git -C %q push", vault_root),
 		}, " && ")
-	end)
-end
-
-local function vault_pull_all()
-	run_for_all_vaults("Vault pull", function(vault_root)
-		return string.format("git -C %q pull", vault_root)
 	end)
 end
 
@@ -186,7 +180,6 @@ return {
 		{ "<leader>ov", "<cmd>Obsidian follow_link vsplit_force<cr>", desc = "Follow link with Vertical Split" },
 		{ "<leader>oh", "<cmd>Obsidian follow_link hsplit_force<cr>", desc = "Follow link with Horizontal Split" },
 		{ "<leader>ow", "<cmd>Obsidian workspace<cr>", desc = "Switch Workspace" },
-		{ "<leader>op", vault_pull_all, desc = "Vault pull all from remote" },
-		{ "<leader>oP", vault_push_all, desc = "Vault push all (add, commit, push)" },
+		{ "<leader>op", vault_sync_all, desc = "Vault sync (pull/push all)" },
 	},
 }
