@@ -117,15 +117,24 @@ async function renderMarkdown(filePath) {
 function simpleMarkdown(src) {
   let html = src;
 
-  // Fenced code blocks (``` ... ```)
+  // Fenced code blocks (``` ... ```) — extract and placeholder to protect them
+  const codeBlocks = [];
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const cls = lang ? ` class="language-${lang}"` : "";
     const escaped = escapeHtml(code.trimEnd());
-    return `<pre><code${cls}>${escaped}</code></pre>`;
+    codeBlocks.push(`<pre><code${cls}>${escaped}</code></pre>`);
+    return `\x00CODEBLOCK${codeBlocks.length - 1}\x00`;
   });
 
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  // Inline code — extract and placeholder
+  const inlineCode = [];
+  html = html.replace(/`([^`]+)`/g, (_, code) => {
+    inlineCode.push(`<code>${escapeHtml(code)}</code>`);
+    return `\x00INLINE${inlineCode.length - 1}\x00`;
+  });
+
+  // Escape HTML tags in remaining text so they display as literal text
+  html = html.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   // Headings
   html = html.replace(/^######\s+(.*)$/gm, "<h6>$1</h6>");
@@ -171,6 +180,10 @@ function simpleMarkdown(src) {
 
   // Collapse multiple blank lines
   html = html.replace(/(<\/[a-z]+>)\n{2,}/g, "$1\n");
+
+  // Restore code blocks and inline code
+  html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, (_, i) => codeBlocks[i]);
+  html = html.replace(/\x00INLINE(\d+)\x00/g, (_, i) => inlineCode[i]);
 
   return html;
 }
