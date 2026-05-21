@@ -162,6 +162,32 @@ return {
 	config = function(_, opts)
 		require("obsidian").setup(opts)
 		apply_default_workspace()
+
+		-- Make ripgrep follow symlinks so cross-vault symlinked dirs are indexed
+		local search = require("obsidian.search")
+		for _, fn in ipairs({ "build_find_cmd", "build_search_cmd" }) do
+			local orig = search[fn]
+			search[fn] = function(...)
+				local cmd = orig(...)
+				table.insert(cmd, 2, "-L")
+				return cmd
+			end
+		end
+
+		-- Prevent Path:resolve() from following symlinks out of the vault
+		local Path = require("obsidian.path")
+		local orig_resolve = Path.resolve
+		Path.resolve = function(self, ropts)
+			local resolved = orig_resolve(self, ropts)
+			local ws_root = tostring(Obsidian.workspace and Obsidian.workspace.root or "")
+			if ws_root ~= "" and not tostring(resolved):find(ws_root, 1, true) then
+				local abs = vim.fn.fnamemodify(tostring(self), ":p")
+				if abs:find(ws_root, 1, true) then
+					return Path.new(abs)
+				end
+			end
+			return resolved
+		end
 	end,
 	cmd = { "Obsidian" },
 	keys = {
