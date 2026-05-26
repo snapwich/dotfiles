@@ -155,6 +155,9 @@ return {
 			folder = "daily",
 			workdays_only = false,
 		},
+		templates = {
+			folder = "templates",
+		},
 		checkbox = {
 			order = { " ", "x" },
 		},
