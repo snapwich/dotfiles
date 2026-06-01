@@ -81,7 +81,9 @@ local function run_for_all_vaults(label, build_script)
 	end
 end
 
-local function search_aliases()
+local function search_aliases(opts)
+	opts = opts or {}
+	local filter = opts.filter
 	local search = require("obsidian.search")
 	local api = require("obsidian.api")
 	local dir = api.resolve_workspace_dir()
@@ -89,7 +91,7 @@ local function search_aliases()
 		---@type obsidian.PickerEntry[]
 		local entries = {}
 		for _, note in ipairs(notes) do
-			if note.aliases and #note.aliases > 0 then
+			if note.aliases and #note.aliases > 0 and (not filter or filter(note)) then
 				local stat = note.path and vim.uv.fs_stat(tostring(note.path))
 				local mtime = stat and stat.mtime.sec or 0
 				local rel = note.path and note.path:vault_relative_path() or ""
@@ -114,13 +116,31 @@ local function search_aliases()
 		end
 		vim.schedule(function()
 			Obsidian.picker.pick(entries, {
-				prompt_title = "Aliases",
+				prompt_title = opts.prompt_title or "Aliases",
 				format_item = function(entry)
 					return entry.text or ""
 				end,
 			})
 		end)
 	end, { dir = dir })
+end
+
+local function search_aliases_buffers()
+	local open = {}
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted then
+			local name = vim.api.nvim_buf_get_name(buf)
+			if name ~= "" then
+				open[vim.fn.fnamemodify(name, ":p")] = true
+			end
+		end
+	end
+	search_aliases({
+		prompt_title = "Aliases (Open Buffers)",
+		filter = function(note)
+			return note.path and open[vim.fn.fnamemodify(tostring(note.path), ":p")]
+		end,
+	})
 end
 
 local function vault_sync_all()
@@ -142,6 +162,8 @@ end
 
 return {
 	"obsidian-nvim/obsidian.nvim",
+	enabled = true,
+	-- dir = "/home/dev/repos/obsidian.nvim/default",
 	version = "*",
 	lazy = false,
 	cond = #workspaces > 0,
@@ -203,7 +225,8 @@ return {
 		{ "<leader>of", "<cmd>Obsidian quick_switch<cr>", desc = "Search Note Names" },
 		{ "<leader>og", "<cmd>Obsidian tags<cr>", desc = "Search Tags" },
 		{ "<leader>oa", search_aliases, desc = "Search Aliases" },
-		{ "<leader>ob", "<cmd>Obsidian backlinks<cr>", desc = "Show Backlinks" },
+		{ "<leader>ob", search_aliases_buffers, desc = "Search Aliases (Open Buffers)" },
+		{ "<leader>ok", "<cmd>Obsidian backlinks<cr>", desc = "Show Backlinks" },
 		{ "<leader>ol", "<cmd>Obsidian links<cr>", desc = "Show Links in document" },
 		{ "<leader>oc", "<cmd>Obsidian toc<cr>", desc = "Table of Contents" },
 		{ "<leader>ov", "<cmd>Obsidian follow_link vsplit_force<cr>", desc = "Follow link with Vertical Split" },
