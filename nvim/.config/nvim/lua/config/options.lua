@@ -19,19 +19,23 @@ local function paste()
   }
 end
 
-local in_tmux = vim.env.TMUX ~= nil
-local paste_fn = in_tmux and require("vim.ui.clipboard.osc52").paste("+") or paste
+-- GUI clients (Neovide, etc.) have native system-clipboard access, so skip the
+-- OSC52 terminal hack and let Neovim use its built-in provider.
+if not vim.g.neovide then
+  local in_tmux = vim.env.TMUX ~= nil
+  local paste_fn = in_tmux and require("vim.ui.clipboard.osc52").paste("+") or paste
 
-vim.g.clipboard = {
-  name = "OSC 52",
-  copy = {
-    ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
-    ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
-  },
-  paste = {
-    ["+"] = paste_fn,
-    ["*"] = paste_fn,
-  },
-}
+  vim.g.clipboard = {
+    name = "OSC 52",
+    copy = {
+      ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
+      ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
+    },
+    paste = {
+      ["+"] = paste_fn,
+      ["*"] = paste_fn,
+    },
+  }
+end
 
 vim.opt.clipboard:append { 'unnamed', 'unnamedplus' }
