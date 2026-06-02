@@ -1,6 +1,8 @@
 vim.opt.relativenumber = false
 vim.opt.list = false
 
+vim.o.guifont = "FiraCode Nerd Font Mono:h10"
+
 vim.api.nvim_create_autocmd("ModeChanged", {
   callback = function()
     local m               = vim.api.nvim_get_mode().mode
