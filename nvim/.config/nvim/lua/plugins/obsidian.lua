@@ -43,7 +43,35 @@ local function apply_default_workspace()
 	end
 end
 
-local function run_for_all_vaults(label, build_script)
+-- Run a list of argv commands sequentially (no shell, so it works on Windows).
+-- Each command is { args = {...}, ignore_failure = bool, skip_if_prev_ok = bool }.
+local function run_commands(commands, on_done)
+	local idx = 0
+	local prev_code = nil
+	local function step()
+		idx = idx + 1
+		local cmd = commands[idx]
+		if not cmd then
+			on_done(true, "")
+			return
+		end
+		if cmd.skip_if_prev_ok and prev_code == 0 then
+			step()
+			return
+		end
+		vim.system(cmd.args, { text = true }, function(out)
+			prev_code = out.code
+			if out.code ~= 0 and not cmd.ignore_failure then
+				on_done(false, (out.stderr or "") .. (out.stdout or ""))
+				return
+			end
+			step()
+		end)
+	end
+	step()
+end
+
+local function run_for_all_vaults(label, build_commands)
 	local datetime = os.date("%Y-%m-%d %H:%M:%S")
 	local targets = vim.tbl_filter(function(ws)
 		return not vim.startswith(ws.name, "_")
@@ -52,15 +80,9 @@ local function run_for_all_vaults(label, build_script)
 	local results = {}
 	for _, ws in ipairs(targets) do
 		local vault_root = vim.fn.fnamemodify(vim.fn.expand(ws.path), ":p"):gsub("/$", "")
-		local script = build_script(vault_root, datetime)
-		vim.system({ "sh", "-c", script }, { text = true }, function(out)
+		run_commands(build_commands(vault_root, datetime), function(ok, output)
 			vim.schedule(function()
-				results[#results + 1] = {
-					name = ws.name,
-					ok = out.code == 0,
-					stderr = out.stderr or "",
-					stdout = out.stdout or "",
-				}
+				results[#results + 1] = { name = ws.name, ok = ok, output = output }
 				if #results < total then
 					return
 				end
@@ -72,7 +94,7 @@ local function run_for_all_vaults(label, build_script)
 				else
 					local lines = { label .. " failed:" }
 					for _, r in ipairs(failures) do
-						lines[#lines + 1] = string.format("[%s] %s%s", r.name, r.stderr, r.stdout)
+						lines[#lines + 1] = string.format("[%s] %s", r.name, r.output)
 					end
 					vim.notify(table.concat(lines, "\n"), vim.log.levels.ERROR)
 				end
@@ -146,17 +168,15 @@ end
 local function vault_sync_all()
 	run_for_all_vaults("Vault sync", function(vault_root, datetime)
 		local message = string.format("vault backup: %s", datetime)
-		return table.concat({
-			string.format("git -C %q add -A", vault_root),
-			string.format(
-				"{ git -C %q diff --cached --quiet || git -C %q commit -m %q; }",
-				vault_root,
-				vault_root,
-				message
-			),
-			string.format("git -C %q pull --rebase", vault_root),
-			string.format("git -C %q push", vault_root),
-		}, " && ")
+		return {
+			{ args = { "git", "-C", vault_root, "add", "-A" } },
+			-- diff --cached --quiet exits nonzero when there are staged changes
+			{ args = { "git", "-C", vault_root, "diff", "--cached", "--quiet" }, ignore_failure = true },
+			-- ...so skip the commit only when the diff found nothing (exit 0)
+			{ args = { "git", "-C", vault_root, "commit", "-m", message }, skip_if_prev_ok = true },
+			{ args = { "git", "-C", vault_root, "pull", "--rebase" } },
+			{ args = { "git", "-C", vault_root, "push" } },
+		}
 	end)
 end
 
