@@ -19,6 +19,8 @@ alias k="kubectl"
 
 alias clauded="claude --dangerously-skip-permissions"
 
+alias fixcursor="tput cnorm"
+
 # prevent ctrl-d logout
 setopt ignore_eof
 
