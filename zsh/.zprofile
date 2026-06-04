@@ -18,6 +18,8 @@ fi
 alias k="kubectl"
 
 alias clauded="claude --dangerously-skip-permissions"
+alias claudes="claude --model sonnet --dangerously-skip-permissions"
+alias claudeh="claude --model haiku"
 
 alias fixcursor="tput cnorm"
 
