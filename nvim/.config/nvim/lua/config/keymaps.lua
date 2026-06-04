@@ -7,6 +7,16 @@ vim.keymap.set({ "n", "v" }, "D", '"_D')
 vim.keymap.set({ "n", "v" }, "c", '"_c')
 vim.keymap.set({ "x" }, "p", "P")
 
+-- Neovide GUI paste (Ctrl+Shift+V). Terminals handle <C-S-v> themselves, so
+-- only wire these up under Neovide.
+if vim.g.neovide then
+  vim.keymap.set("i", "<C-S-v>", "<C-r><C-o>+", { desc = "Paste system clipboard" }) -- literal, no reindent
+  vim.keymap.set("c", "<C-S-v>", "<C-r>+", { desc = "Paste system clipboard" })
+  vim.keymap.set("n", "<C-S-v>", '"+p', { desc = "Paste system clipboard" })
+  vim.keymap.set("x", "<C-S-v>", '"+P', { desc = "Paste system clipboard" })
+  vim.keymap.set("t", "<C-S-v>", [[<C-\><C-n>"+pa]], { desc = "Paste system clipboard" })
+end
+
 vim.keymap.set({ "n", "v" }, "q", "<nop>")
 vim.keymap.set({ "n", "v" }, "Q", "<nop>")
 
