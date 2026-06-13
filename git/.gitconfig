@@ -14,6 +14,8 @@
   plus-style = syntax "#005050"
 [merge]
   conflictStyle = zdiff3
+[pull]
+  rebase = true
 [include]
   path = ~/.config/delta/themes.gitconfig
 [include]
