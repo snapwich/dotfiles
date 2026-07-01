@@ -16,6 +16,8 @@
   conflictStyle = zdiff3
 [pull]
   rebase = true
+[rebase]
+  autoStash = true
 [include]
   path = ~/.config/delta/themes.gitconfig
 [include]
