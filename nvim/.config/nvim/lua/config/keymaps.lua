@@ -33,6 +33,12 @@ vim.keymap.set("n", "<leader>yp", function()
 	vim.notify("Copied: " .. result)
 end, { desc = "Copy relative file path:line to clipboard" })
 
+vim.keymap.set("n", "<leader>yf", function()
+	local filename = vim.fn.expand("%:t")
+	vim.fn.setreg("+", filename)
+	vim.notify("Copied: " .. filename)
+end, { desc = "Copy filename to clipboard" })
+
 vim.keymap.set("n", "<leader>yP", function()
 	local filepath = vim.fn.expand("%:p")
 	local linenum = vim.fn.line(".")
