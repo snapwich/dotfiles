@@ -79,6 +79,22 @@ vim.keymap.set("n", "<leader>wp", "<C-w>p", { desc = "Previous window" })
 vim.keymap.set("n", "<leader>b[", ":BufferLineMovePrev<CR>", { desc = "Move current buffer left" })
 vim.keymap.set("n", "<leader>b]", ":BufferLineMoveNext<CR>", { desc = "Move current buffer right" })
 
+vim.keymap.set("n", "<leader>fd", function()
+  local filepath = vim.fn.expand("%:p")
+  if filepath == "" then
+    vim.notify("No file to delete", vim.log.levels.WARN)
+    return
+  end
+  local filename = vim.fn.expand("%:t")
+  vim.ui.select({ "No", "Yes" }, { prompt = "Delete " .. filename .. "?" }, function(choice)
+    if choice == "Yes" then
+      Snacks.bufdelete()
+      os.remove(filepath)
+      vim.notify("Deleted: " .. filepath)
+    end
+  end)
+end, { desc = "Delete current file (confirm)" })
+
 vim.keymap.set(
 	"n",
 	"<leader>cs",
