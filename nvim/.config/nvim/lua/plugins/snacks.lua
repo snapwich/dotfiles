@@ -70,9 +70,45 @@ function custom_pickers.git_diff_origin_default()
   })
 end
 
+-- Patch snacks' file rename to rename the buffer in place instead of swapping
+-- in a fresh copy read from disk, which silently drops unsaved edits. Fixes the
+-- explorer's `m`/move actions and <leader>fm, which all route through _rename.
+-- See https://github.com/folke/snacks.nvim/discussions/2852
+local function patch_rename()
+  local rename = require("snacks.rename")
+  function rename._rename(from, to)
+    from = vim.fn.fnamemodify(from, ":p")
+    to = vim.fn.fnamemodify(to, ":p")
+    vim.fn.mkdir(vim.fs.dirname(to), "p")
+    if vim.fn.rename(from, to) ~= 0 then
+      Snacks.notify.error("Failed to rename file: `" .. from .. "`")
+      return false
+    end
+    -- Only touch buffers if the file is actually open; renaming a closed file
+    -- (e.g. from the explorer) must still report success so callers refresh.
+    local from_buf = vim.fn.bufnr(from)
+    if from_buf >= 0 then
+      local to_buf = vim.fn.bufnr(to)
+      if to_buf >= 0 and to_buf ~= from_buf then
+        vim.api.nvim_buf_delete(to_buf, { force = true })
+      end
+      vim.api.nvim_buf_set_name(from_buf, to)
+      vim.api.nvim_buf_call(from_buf, function()
+        local mod = vim.bo.modified
+        vim.cmd("edit! | undo") -- resync buffer<->file, then restore unsaved edits
+        vim.bo.modified = mod
+      end)
+    end
+    return true
+  end
+end
+
 return {
   {
     "folke/snacks.nvim",
+    init = function()
+      vim.schedule(patch_rename) -- defer until snacks is loaded
+    end,
     opts = {
       dashboard = {
         preset = {

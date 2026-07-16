@@ -79,6 +79,12 @@ vim.keymap.set("n", "<leader>wp", "<C-w>p", { desc = "Previous window" })
 vim.keymap.set("n", "<leader>b[", ":BufferLineMovePrev<CR>", { desc = "Move current buffer left" })
 vim.keymap.set("n", "<leader>b]", ":BufferLineMoveNext<CR>", { desc = "Move current buffer right" })
 
+-- Rename/move keeps unsaved buffer edits; see the _rename patch in
+-- plugins/snacks.lua (also fixes the explorer's `m`/move).
+vim.keymap.set("n", "<leader>fm", function()
+  Snacks.rename.rename_file()
+end, { desc = "Move/rename current file" })
+
 vim.keymap.set("n", "<leader>fd", function()
   local filepath = vim.fn.expand("%:p")
   if filepath == "" then
