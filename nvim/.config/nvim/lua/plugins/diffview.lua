@@ -33,6 +33,16 @@ return {
       end,
       desc = "Diffview: branch changes from custom base ref",
     },
+    {
+      "<leader>dc",
+      function()
+        local commit = vim.fn.input("Commit: ")
+        if commit ~= "" then
+          vim.cmd("DiffviewOpen " .. commit .. "^..." .. commit)
+        end
+      end,
+      desc = "Diffview: show single commit diff",
+    },
   },
   opts = {},
   lazy = false,
