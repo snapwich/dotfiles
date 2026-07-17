@@ -1,10 +1,10 @@
 vim.opt.relativenumber = false
 vim.opt.list = false
 
--- disable drag-select to avoid accidentally entering visual mode
+-- disable mouse drag-select visual mode
 vim.o.mouse = "a"
-vim.keymap.set('n', '<LeftDrag>', '<Nop>')
-vim.keymap.set('n', '<LeftRelease>', '<Nop>')
+vim.keymap.set('n', '<LeftDrag>', '<LeftMouse>', { noremap = true })
+vim.keymap.set('v', '<LeftDrag>', '<Esc><LeftMouse>', { noremap = true })
 
 vim.o.guifont = "FiraCode Nerd Font Mono:h10"
 
