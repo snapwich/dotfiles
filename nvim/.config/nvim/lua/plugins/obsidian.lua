@@ -215,6 +215,167 @@ local function vault_sync_all()
   end)
 end
 
+-- Deferred: obsidian.nvim isn't on the rtp yet while this spec is evaluated.
+local function title_id(title, dir)
+  return require("obsidian.builtin").title_id(title, dir)
+end
+
+-- A reference points at an existing source note; these are the candidates.
+-- Books, articles and web pages all live together here — what distinguishes
+-- them is their `tags`, not their folder.
+local source_dirs = { "sources" }
+local source_kinds = { book = true, article = true, web = true }
+
+-- Cheap frontmatter read for picker labels: the `title:` and the kind tag.
+local function frontmatter_info(path)
+  local ok, lines = pcall(vim.fn.readfile, path, "", 20)
+  if not ok then
+    return nil, nil
+  end
+  local title, kind
+  for _, line in ipairs(lines) do
+    title = title or line:match '^title:%s*"?(.-)"?%s*$'
+    local tag = line:match "^%s*-%s*([%w-]+)%s*$"
+    if not kind and tag and source_kinds[tag] then
+      kind = tag
+    end
+  end
+  return title, kind
+end
+
+---@return { stem: string, path: string, label: string }[]
+local function source_notes()
+  local out = {}
+  for _, subdir in ipairs(source_dirs) do
+    local dir = vim.fs.joinpath(tostring(Obsidian.dir), subdir)
+    if vim.fn.isdirectory(dir) == 1 then
+      for name, ftype in vim.fs.dir(dir) do
+        local stem = name:match "^(.+)%.md$"
+        if ftype == "file" and stem then
+          local path = vim.fs.joinpath(dir, name)
+          local title, kind = frontmatter_info(path)
+          out[#out + 1] = {
+            stem = stem,
+            path = path,
+            label = string.format("%s  (%s)", title or stem, kind or "source"),
+          }
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b)
+    return a.stem < b.stem
+  end)
+  return out
+end
+
+-- `customlist` completion can only call a globally reachable function.
+_G.obsidian_source_complete = function(arglead)
+  local out = {}
+  for _, note in ipairs(source_notes()) do
+    if note.stem:lower():find(arglead:lower(), 1, true) then
+      out[#out + 1] = note.stem
+    end
+  end
+  return out
+end
+
+-- Set by `new_reference` below, which resolves the source asynchronously via
+-- the picker; template substitutions themselves have to be synchronous.
+local pending_source = nil
+
+local function prompt_source()
+  if pending_source then
+    return pending_source
+  end
+  return require("obsidian.api").input("Source", {
+    completion = "customlist,v:lua.obsidian_source_complete",
+  }) or ""
+end
+
+--- The book/article the current buffer implies: itself when it is one, else
+--- whatever a reference note's own `source:` points at.
+---@return string|? stem
+local function buffer_source_stem()
+  local bufname = vim.api.nvim_buf_get_name(0)
+  if bufname == "" then
+    return nil
+  end
+
+  local abs = vim.fn.fnamemodify(bufname, ":p")
+  for _, subdir in ipairs(source_dirs) do
+    local prefix = vim.fs.joinpath(tostring(Obsidian.dir), subdir) .. "/"
+    if abs:sub(1, #prefix) == prefix then
+      return vim.fn.fnamemodify(abs, ":t:r")
+    end
+  end
+
+  for _, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, 20, false)) do
+    local link = line:match "^source:%s*\"?%[%[(.-)%]%]\"?%s*$"
+    if link then
+      return vim.split(link, "|")[1] -- drop any [[stem|Alias]] label
+    end
+  end
+  return nil
+end
+
+local function create_reference(stem)
+  pending_source = stem
+  local ok, err = pcall(function()
+    local note = require("obsidian.note").create { template = "reference.md" }
+    note:write()
+    note:open { sync = true }
+  end)
+  pending_source = nil
+  if not ok then
+    vim.notify("Failed to create reference: " .. tostring(err), vim.log.levels.ERROR)
+  end
+end
+
+-- New reference note sourced from a book/article. Always picks from the full
+-- list, but the source implied by the current buffer floats to the top.
+local function new_reference()
+  local notes = source_notes()
+  if vim.tbl_isempty(notes) then
+    vim.notify("No notes in " .. table.concat(source_dirs, " or "), vim.log.levels.WARN)
+    return
+  end
+
+  local inferred = buffer_source_stem()
+  local ordered = {}
+  for _, note in ipairs(notes) do
+    if note.stem == inferred then
+      table.insert(ordered, 1, note)
+    else
+      ordered[#ordered + 1] = note
+    end
+  end
+
+  ---@type obsidian.PickerEntry[]
+  local entries = {}
+  for _, note in ipairs(ordered) do
+    local label = note.stem == inferred and note.label .. "  ← current" or note.label
+    entries[#entries + 1] = {
+      filename = note.path,
+      text = label,
+      ordinal = label .. " " .. note.stem,
+      user_data = note.stem,
+    }
+  end
+
+  Obsidian.picker.pick(entries, {
+    prompt_title = "Reference source",
+    format_item = function(entry)
+      return entry.text or ""
+    end,
+    callback = function(entry)
+      if entry and entry.user_data then
+        create_reference(entry.user_data)
+      end
+    end,
+  })
+end
+
 return {
   "obsidian-nvim/obsidian.nvim",
   enabled = true,
@@ -232,8 +393,19 @@ return {
       folder = "daily",
       workdays_only = false,
     },
+    -- Template bodies use only `{{var}}` so the same files render in the
+    -- Obsidian desktop app too, via the Templater shims in `templater/`.
+    -- Keep this in sync with FILENAME in the vault's `scripts/render.js`.
     templates = {
       folder = "templates",
+      substitutions = { source = prompt_source },
+      customizations = {
+        -- Slug filenames (with -2/-3 collision suffixes) instead of zettel ids.
+        book = { notes_subdir = "sources", note_id_func = title_id },
+        article = { notes_subdir = "sources", note_id_func = title_id },
+        web = { notes_subdir = "sources", note_id_func = title_id },
+        reference = { notes_subdir = "references" },
+      },
     },
     checkbox = {
       order = { " ", "x" },
@@ -271,7 +443,8 @@ return {
   end,
   cmd = { "Obsidian" },
   keys = {
-    { "<leader>on", "<cmd>Obsidian new<cr>",                      desc = "New note" },
+    { "<leader>on", "<cmd>Obsidian new_from_template<cr>",        desc = "New note from template" },
+    { "<leader>or", new_reference,                                desc = "New reference from book/article" },
     { "<leader>oD", "<cmd>Obsidian dailies -30 0<cr>",            desc = "Daily note picker" },
     { "<leader>od", all_dailies,                                  desc = "All dailies" },
     { "<leader>ot", "<cmd>Obsidian today<cr>",                    desc = "Daily Today" },
