@@ -140,6 +140,7 @@ return {
                 height = 1,
                 position = "right",
               },
+              preview = "main",
             },
           },
           files = {
@@ -153,7 +154,7 @@ return {
     },
     keys = {
       { "<leader>gm", custom_pickers.git_diff_origin_default, desc = "Git branch changed files vs default branch" },
-      { "<leader>sq", custom_pickers.grep_quickfix, desc = "Grep Quickfix List Files" }
+      { "<leader>sq", custom_pickers.grep_quickfix,           desc = "Grep Quickfix List Files" }
     }
   },
 }
