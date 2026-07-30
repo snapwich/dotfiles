@@ -1,4 +1,4 @@
 shell-integration-features = ssh-env,ssh-terminfo
 bell-features = system
 font-feature = -calt, -liga, -dlig
-keybind = shift+enter=text:\x1b[13;2u
+keybind = shift+enter=text:\x1b\r
