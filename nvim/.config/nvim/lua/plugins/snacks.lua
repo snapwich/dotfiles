@@ -140,7 +140,9 @@ return {
                 height = 1,
                 position = "right",
               },
-              preview = "main",
+              -- Preview in the main window, but off by default (toggle with `P`)
+              -- instead of auto-previewing whatever is under the cursor on load.
+              preview = { main = true, enabled = false },
             },
           },
           files = {
