@@ -35,6 +35,12 @@ local function apply_default_workspace()
   if not default_workspace then
     return
   end
+  local cwd = vim.fn.getcwd()
+  for _, ws in ipairs(Obsidian.workspaces or {}) do
+    if vim.startswith(cwd, tostring(ws.root)) then
+      return
+    end
+  end
   for _, ws in ipairs(Obsidian.workspaces or {}) do
     if ws.name == default_workspace then
       require("obsidian.workspace").set(ws)
