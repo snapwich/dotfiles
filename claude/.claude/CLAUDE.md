@@ -2,7 +2,7 @@
 
 Be extremely concise. Sacrifice grammar for the sake of concision.
 
-When writing documentation, always adhere to ASD-STE100 Simplified Technical English
+When writing, adhere to ASD-STE100 Simplified Technical English
 
 # Planning
 
