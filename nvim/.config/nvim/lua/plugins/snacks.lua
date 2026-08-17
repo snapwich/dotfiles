@@ -153,6 +153,11 @@ return {
       scroll = {
         enabled = false,
       },
+      notifier = {
+        margin = {
+          right = 42
+        }
+      }
     },
     keys = {
       { "<leader>gm", custom_pickers.git_diff_origin_default, desc = "Git branch changed files vs default branch" },
