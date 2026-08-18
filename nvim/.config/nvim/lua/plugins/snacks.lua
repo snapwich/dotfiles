@@ -117,6 +117,10 @@ return {
       },
       picker = {
         layout = {
+          -- Stay side-by-side only in wide windows; stack below 180 columns
+          preset = function()
+            return vim.o.columns >= 200 and "default" or "vertical"
+          end,
           layout = {
             width = 0.95,
             height = 0.95,
