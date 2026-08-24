@@ -32,6 +32,6 @@ fi
 # Inside a popup, TMUX_PANE is the popup's own pane and is not a usable
 # target, so the invoking pane is passed in GWTMUX_PANE and the wrapper
 # exports it as TMUX_PANE for gwtmux's window lookups.
-extra="'' 'Worktree Done' d { display-popup -E -d '#{pane_current_path}' -e 'GWTMUX_PANE=#{pane_id}' '~/.config/tmux/gwtmux-done.sh' }"
+extra="'' 'Worktree Done' d { display-popup -E -T ' gwtmux: worktree done ' -d '#{pane_current_path}' -e 'GWTMUX_PANE=#{pane_id}' '~/.config/tmux/gwtmux-done.sh' }"
 
 tmux bind-key -T "$table" "$key" "$default $extra"

@@ -11,6 +11,17 @@ if [[ -n "${GWTMUX_PANE:-}" ]]; then
 	export TMUX_PANE="$GWTMUX_PANE"
 fi
 
+# gwtmux is mostly silent on success, so the popup looks broken while it
+# works. Print what it is about to do first.
+worktree="$(git rev-parse --show-toplevel 2>/dev/null)"
+branch="$(git branch --show-current 2>/dev/null)"
+
+print "gwtmux -dwB -- worktree done"
+print "  worktree: ${worktree:-<not a git worktree>}"
+print "  branch:   ${branch:-<detached>}"
+print "  removing worktree, force-deleting local branch, closing window"
+print ""
+
 source "${HOME}/.local/share/gwtmux/gwtmux.sh"
 
 gwtmux -dwB
