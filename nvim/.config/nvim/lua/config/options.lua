@@ -1,6 +1,9 @@
 vim.opt.relativenumber = false
 vim.opt.list = false
 
+-- temporarily use tsgo until tsc update: https://github.com/LazyVim/LazyVim/pull/7233
+vim.g.lazyvim_ts_lsp = "tsgo"
+
 -- disable mouse drag-select visual mode
 vim.o.mouse = "a"
 vim.keymap.set('n', '<LeftDrag>', '<LeftMouse>', { noremap = true })
