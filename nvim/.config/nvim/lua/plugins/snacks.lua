@@ -70,6 +70,50 @@ function custom_pickers.git_diff_origin_default()
   })
 end
 
+-- Workspace files ordered by filesystem mtime, newest first. Unlike <leader>fr
+-- (vim.v.oldfiles = what this nvim opened), this reads disk state, so it also
+-- catches edits from git checkouts, formatters, agents and other editors.
+function custom_pickers.recent_modified()
+  local uv = vim.uv or vim.loop
+  local root = LazyVim.root()
+
+  Snacks.picker.pick({
+    source = "recent_modified",
+    title = "Recently Modified",
+    cwd = root,
+    preview = "file",
+    sort = function(a, b)
+      return (a.mtime or 0) > (b.mtime or 0)
+    end,
+    format = function(item, picker)
+      local ret = { { Snacks.picker.util.align(Snacks.picker.util.reltime(item.mtime), 16), "SnacksPickerTime" } }
+      vim.list_extend(ret, Snacks.picker.format.file(item, picker))
+      return ret
+    end,
+    finder = function()
+      local out = vim.system(
+        { "fd", "--type", "f", "--hidden", "--exclude", ".git" },
+        { cwd = root, text = true }
+      ):wait()
+      local items = {}
+      for path in vim.gsplit(out.stdout or "", "\n", { trimempty = true }) do
+        local stat = uv.fs_stat(root .. "/" .. path)
+        if stat then
+          items[#items + 1] = { file = path, text = path, cwd = root, mtime = stat.mtime.sec }
+        end
+      end
+      table.sort(items, function(a, b)
+        return a.mtime > b.mtime
+      end)
+      return function(cb)
+        for _, item in ipairs(items) do
+          cb(item)
+        end
+      end
+    end,
+  })
+end
+
 -- Patch snacks' file rename to rename the buffer in place instead of swapping
 -- in a fresh copy read from disk, which silently drops unsaved edits. Fixes the
 -- explorer's `m`/move actions and <leader>fm, which all route through _rename.
@@ -164,6 +208,7 @@ return {
       }
     },
     keys = {
+      { "<leader>fu", custom_pickers.recent_modified,         desc = "Recently modified files (mtime)" },
       { "<leader>gm", custom_pickers.git_diff_origin_default, desc = "Git branch changed files vs default branch" },
       { "<leader>sq", custom_pickers.grep_quickfix,           desc = "Grep Quickfix List Files" }
     }
