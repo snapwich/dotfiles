@@ -1,3 +1,6 @@
+[[ -n $ZPROFILE_LOADED ]] && return
+ZPROFILE_LOADED=1
+
 export XDG_CONFIG_HOME="$HOME/.config"
 export PATH="$PATH:$HOME/.local/bin"
 
@@ -9,11 +12,9 @@ export EDITOR="$VISUAL"
 
 export TZ="America/Denver"
 
-if [ -d "$HOME/.zprofile.d" ]; then
-  for f in "$HOME/.zprofile.d"/*; do
-    [ -f "$f" ] && [ -r "$f" ] && . "$f"
-  done
-fi
+for f in "$HOME"/.zprofile.d/*(N); do
+  [ -f "$f" ] && [ -r "$f" ] && . "$f"
+done
 
 alias k="kubectl"
 
