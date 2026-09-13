@@ -325,22 +325,26 @@ local function buffer_source_stem()
   return nil
 end
 
-local function create_reference(stem)
+---@param template string|obsidian.Path template name or path
+---@param stem string|? source note stem, substituted for `{{source}}`
+---@param id string|? note id/title, nil for the default zettel id
+local function create_from_template(template, stem, id)
   pending_source = stem
   local ok, err = pcall(function()
-    local note = require("obsidian.note").create { template = "reference.md" }
-    note:write()
+    local note = require("obsidian.note").create { id = id, template = template, should_write = true }
     note:open { sync = true }
   end)
   pending_source = nil
   if not ok then
-    vim.notify("Failed to create reference: " .. tostring(err), vim.log.levels.ERROR)
+    vim.notify("Failed to create note: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
 
--- New reference note sourced from a book/article. Always picks from the full
--- list, but the source implied by the current buffer floats to the top.
-local function new_reference()
+-- Pick a source note. Always offers the full list, but the source implied by
+-- the current buffer floats to the top. `callback` gets the chosen stem; it is
+-- never called when the pick is aborted.
+---@param callback fun(stem: string)
+local function pick_source(callback)
   local notes = source_notes()
   if vim.tbl_isempty(notes) then
     vim.notify("No notes in " .. table.concat(source_dirs, " or "), vim.log.levels.WARN)
@@ -376,10 +380,68 @@ local function new_reference()
     end,
     callback = function(entry)
       if entry and entry.user_data then
-        create_reference(entry.user_data)
+        callback(entry.user_data)
       end
     end,
   })
+end
+
+local function new_reference()
+  pick_source(function(stem)
+    create_from_template("reference.md", stem)
+  end)
+end
+
+-- True when the template writes a `{{source}}`, i.e. it needs an existing
+-- source note rather than free text.
+local function template_needs_source(template)
+  local ok, path = pcall(require("obsidian.templates").resolve_template, template, require("obsidian.api").templates_dir())
+  if not ok then
+    return false
+  end
+  local read_ok, lines = pcall(vim.fn.readfile, tostring(path))
+  return read_ok and table.concat(lines, "\n"):find("{{source}}", 1, true) ~= nil
+end
+
+-- `Obsidian new_from_template`, except a template with a `{{source}}` resolves
+-- it through the source picker instead of a free-text input. The picker is
+-- async and template substitution is not, so the source has to be settled
+-- before the note is created.
+local function new_from_template()
+  local api = require "obsidian.api"
+  local templates_dir = api.templates_dir()
+  if not templates_dir then
+    vim.notify("Templates folder is not defined or does not exist", vim.log.levels.ERROR)
+    return
+  end
+
+  Obsidian.picker.find_files {
+    prompt_title = "Templates",
+    dir = templates_dir,
+    no_default_mappings = true,
+    callback = function(template)
+      if not template or template == "" then
+        return
+      end
+
+      local id = api.input("Enter title or path (optional)", { completion = "file" })
+      if not id then
+        return -- aborted
+      elseif id == "" then
+        id = nil
+      end
+
+      -- No sources in this vault: fall through so `prompt_source` asks for the
+      -- value instead, rather than blocking note creation on an empty picker.
+      if template_needs_source(template) and not vim.tbl_isempty(source_notes()) then
+        pick_source(function(stem)
+          create_from_template(template, stem, id)
+        end)
+      else
+        create_from_template(template, nil, id)
+      end
+    end,
+  }
 end
 
 return {
@@ -449,7 +511,7 @@ return {
   end,
   cmd = { "Obsidian" },
   keys = {
-    { "<leader>on", "<cmd>Obsidian new_from_template<cr>",        desc = "New note from template" },
+    { "<leader>on", new_from_template,                            desc = "New note from template" },
     { "<leader>or", new_reference,                                desc = "New reference from book/article" },
     { "<leader>oD", "<cmd>Obsidian dailies -30 0<cr>",            desc = "Daily note picker" },
     { "<leader>od", all_dailies,                                  desc = "All dailies" },
