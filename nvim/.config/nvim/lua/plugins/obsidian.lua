@@ -392,15 +392,21 @@ local function new_reference()
   end)
 end
 
--- True when the template writes a `{{source}}`, i.e. it needs an existing
--- source note rather than free text.
-local function template_needs_source(template)
-  local ok, path = pcall(require("obsidian.templates").resolve_template, template, require("obsidian.api").templates_dir())
+---@return string|? body of the template, nil when it cannot be read
+local function template_body(template)
+  local ok, path =
+    pcall(require("obsidian.templates").resolve_template, template, require("obsidian.api").templates_dir())
   if not ok then
-    return false
+    return nil
   end
   local read_ok, lines = pcall(vim.fn.readfile, tostring(path))
-  return read_ok and table.concat(lines, "\n"):find("{{source}}", 1, true) ~= nil
+  return read_ok and table.concat(lines, "\n") or nil
+end
+
+---@param body string|?
+---@param var string
+local function template_uses(body, var)
+  return body ~= nil and body:find("{{" .. var .. "}}", 1, true) ~= nil
 end
 
 -- `Obsidian new_from_template`, except a template with a `{{source}}` resolves
@@ -424,16 +430,23 @@ local function new_from_template()
         return
       end
 
-      local id = api.input("Enter title or path (optional)", { completion = "file" })
-      if not id then
-        return -- aborted
-      elseif id == "" then
-        id = nil
+      local body = template_body(template)
+
+      -- Only ask when the template renders it. A template without `{{title}}`
+      -- (reference.md) takes the default zettel id, so the answer is discarded.
+      local id
+      if template_uses(body, "title") then
+        id = api.input("Enter title or path (optional)", { completion = "file" })
+        if not id then
+          return -- aborted
+        elseif id == "" then
+          id = nil
+        end
       end
 
       -- No sources in this vault: fall through so `prompt_source` asks for the
       -- value instead, rather than blocking note creation on an empty picker.
-      if template_needs_source(template) and not vim.tbl_isempty(source_notes()) then
+      if template_uses(body, "source") and not vim.tbl_isempty(source_notes()) then
         pick_source(function(stem)
           create_from_template(template, stem, id)
         end)
