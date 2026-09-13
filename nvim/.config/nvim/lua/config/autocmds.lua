@@ -48,3 +48,18 @@ vim.api.nvim_create_autocmd("OptionSet", {
   pattern = "diff",
   callback = function() sync_numbers_for_diff(0) end,
 })
+
+-- `gc` quotes markdown instead of writing HTML comments: `<!-- -->` is useless
+-- in notes, blockquotes are not. The builtin operator prefixes blank lines with
+-- a bare `>` too, which keeps one quote from splitting in two.
+--
+-- Runs after $VIMRUNTIME/ftplugin/markdown.vim, which sets `<!-- %s -->`.
+-- Other half of the override is lua/plugins/ts-comments.lua; both are needed.
+-- Injected languages still win, so `gc` in a ```lua fence or the yaml
+-- frontmatter is unaffected.
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "markdown",
+  callback = function(ev)
+    vim.bo[ev.buf].commentstring = "> %s"
+  end,
+})
