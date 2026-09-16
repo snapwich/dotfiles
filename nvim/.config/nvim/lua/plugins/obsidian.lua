@@ -331,7 +331,8 @@ end
 local function create_from_template(template, stem, id)
   pending_source = stem
   local ok, err = pcall(function()
-    local note = require("obsidian.note").create { id = id, template = template, should_write = true }
+    local note = require("obsidian.note").create { id = id, template = template }
+    note:write()
     note:open { sync = true }
   end)
   pending_source = nil
