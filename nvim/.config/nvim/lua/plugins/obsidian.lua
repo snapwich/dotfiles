@@ -232,21 +232,73 @@ end
 local source_dirs = { "sources" }
 local source_kinds = { book = true, article = true, web = true }
 
--- Cheap frontmatter read for picker labels: the `title:` and the kind tag.
+-- Cheap frontmatter read for picker labels. Scalars land on the table as-is;
+-- `tags` and `aliases` keep their block-list items.
+---@return table
 local function frontmatter_info(path)
-  local ok, lines = pcall(vim.fn.readfile, path, "", 20)
+  local info = { tags = {}, aliases = {} }
+  local ok, lines = pcall(vim.fn.readfile, path, "", 40)
   if not ok then
-    return nil, nil
+    return info
   end
-  local title, kind
-  for _, line in ipairs(lines) do
-    title = title or line:match '^title:%s*"?(.-)"?%s*$'
-    local tag = line:match "^%s*-%s*([%w-]+)%s*$"
-    if not kind and tag and source_kinds[tag] then
-      kind = tag
+  local key
+  for i, line in ipairs(lines) do
+    if i > 1 and line:match "^%-%-%-" then
+      break -- end of the frontmatter block
+    end
+    local k, v = line:match "^([%w_-]+):%s*(.-)%s*$"
+    if k then
+      key = k
+      v = v:gsub('^"(.*)"$', "%1")
+      if v ~= "" and v ~= "[]" then
+        info[k] = v
+      end
+    else
+      local item = line:match "^%s*%-%s*(.-)%s*$"
+      if item and (key == "tags" or key == "aliases") then
+        table.insert(info[key], (item:gsub('^"(.*)"$', "%1")))
+      end
     end
   end
-  return title, kind
+  return info
+end
+
+-- Everything worth typing at the picker: author, year, the non-kind tags, the
+-- url host and any alias. Snacks matches on the displayed text, so metadata
+-- only becomes searchable by being part of the label.
+---@return string label
+local function source_label(info, stem)
+  local kind
+  local extra_tags = {}
+  for _, tag in ipairs(info.tags) do
+    if not kind and source_kinds[tag] then
+      kind = tag
+    else
+      extra_tags[#extra_tags + 1] = tag
+    end
+  end
+
+  local meta = {}
+  local function add(value)
+    if value and value ~= "" then
+      meta[#meta + 1] = value
+    end
+  end
+  add(info.author)
+  add(info.year)
+  vim.list_extend(meta, extra_tags)
+  add(info.url and info.url:match "^%a+://([^/]+)")
+  for _, alias in ipairs(info.aliases) do
+    if alias:lower() ~= (info.title or stem):lower() then
+      add(alias)
+    end
+  end
+
+  local label = string.format("%s  (%s)", info.title or stem, kind or "source")
+  if not vim.tbl_isempty(meta) then
+    label = label .. "  · " .. table.concat(meta, " · ")
+  end
+  return label
 end
 
 ---@return { stem: string, path: string, label: string }[]
@@ -259,11 +311,10 @@ local function source_notes()
         local stem = name:match "^(.+)%.md$"
         if ftype == "file" and stem then
           local path = vim.fs.joinpath(dir, name)
-          local title, kind = frontmatter_info(path)
           out[#out + 1] = {
             stem = stem,
             path = path,
-            label = string.format("%s  (%s)", title or stem, kind or "source"),
+            label = source_label(frontmatter_info(path), stem),
           }
         end
       end
