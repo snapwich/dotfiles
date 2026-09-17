@@ -49,6 +49,34 @@ local function apply_default_workspace()
   end
 end
 
+-- Git must never block: `vim.system` gives it no tty, so an ssh passphrase or
+-- credential prompt would hang the sync forever with nothing reported. The
+-- transports need their own deadlines too -- `vim.system`'s timeout kills git
+-- but the callback still waits on the stdio pipes, which a stuck grandchild
+-- (ssh) keeps open.
+local git_env = {
+  GIT_TERMINAL_PROMPT = "0",
+  GIT_ASKPASS = "",
+  SSH_ASKPASS = "",
+  GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3",
+  GIT_HTTP_LOW_SPEED_LIMIT = "1000",
+  GIT_HTTP_LOW_SPEED_TIME = "30",
+}
+
+-- Backstop for a git process that hangs without network I/O.
+local command_timeout = 60000
+
+-- Lint output (lint-staged, markdownlint) carries ANSI colors and carriage
+-- returns that make a notification unreadable.
+local function clean_output(output)
+  return (output or "")
+    :gsub("\27%[[%d;]*[A-Za-z]", "")
+    :gsub("\r", "\n")
+    :gsub("\n\n+", "\n")
+    :gsub("^%s+", "")
+    :gsub("%s+$", "")
+end
+
 -- Run a list of argv commands sequentially (no shell, so it works on Windows).
 -- Each command is { args = {...}, ignore_failure = bool, skip_if_prev_ok = bool }.
 local function run_commands(commands, on_done)
@@ -65,10 +93,17 @@ local function run_commands(commands, on_done)
       step()
       return
     end
-    vim.system(cmd.args, { text = true }, function(out)
+    vim.system(cmd.args, { text = true, env = git_env, timeout = command_timeout }, function(out)
       prev_code = out.code
       if out.code ~= 0 and not cmd.ignore_failure then
-        on_done(false, (out.stderr or "") .. (out.stdout or ""))
+        -- Name the subcommand only ("commit", "push"): the full argv would drag
+        -- the commit message into the notification.
+        local what = cmd.args[2] == "-C" and cmd.args[4] or cmd.args[2]
+        local detail = clean_output((out.stderr or "") .. (out.stdout or ""))
+        if out.code == 124 then
+          detail = string.format("timed out after %ds\n%s", command_timeout / 1000, detail)
+        end
+        on_done(false, string.format("`git %s` failed\n%s", what, detail))
         return
       end
       step()
@@ -77,32 +112,42 @@ local function run_commands(commands, on_done)
   step()
 end
 
+-- Failures are reported as soon as they happen, per vault: waiting for every
+-- vault would hide an error behind a slow (or dead) remote. Long output stays
+-- readable in the notification history (`<leader>sna`, `<leader>n`).
+local function notify_failure(label, name, output)
+  vim.notify(string.format("%s failed [%s]\n%s", label, name, output), vim.log.levels.ERROR, {
+    title = label,
+  })
+end
+
 local function run_for_all_vaults(label, build_commands)
   local datetime = os.date("%Y-%m-%d %H:%M:%S")
   local targets = vim.tbl_filter(function(ws)
     return not vim.startswith(ws.name, "_")
   end, workspaces)
   local total = #targets
-  local results = {}
+  local done = 0
+  local failed = 0
   for _, ws in ipairs(targets) do
     local vault_root = vim.fn.fnamemodify(vim.fn.expand(ws.path), ":p"):gsub("/$", "")
     run_commands(build_commands(vault_root, datetime), function(ok, output)
       vim.schedule(function()
-        results[#results + 1] = { name = ws.name, ok = ok, output = output }
-        if #results < total then
+        done = done + 1
+        if not ok then
+          failed = failed + 1
+          notify_failure(label, ws.name, output)
+        end
+        if done < total then
           return
         end
-        local failures = vim.tbl_filter(function(r)
-          return not r.ok
-        end, results)
-        if #failures == 0 then
+        if failed == 0 then
           vim.notify(string.format("%s complete (%d vaults)", label, total), vim.log.levels.INFO)
         else
-          local lines = { label .. " failed:" }
-          for _, r in ipairs(failures) do
-            lines[#lines + 1] = string.format("[%s] %s", r.name, r.output)
-          end
-          vim.notify(table.concat(lines, "\n"), vim.log.levels.ERROR)
+          vim.notify(
+            string.format("%s: %d of %d vaults failed", label, failed, total),
+            vim.log.levels.WARN
+          )
         end
       end)
     end)
