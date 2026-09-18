@@ -70,11 +70,11 @@ local command_timeout = 60000
 -- returns that make a notification unreadable.
 local function clean_output(output)
   return (output or "")
-    :gsub("\27%[[%d;]*[A-Za-z]", "")
-    :gsub("\r", "\n")
-    :gsub("\n\n+", "\n")
-    :gsub("^%s+", "")
-    :gsub("%s+$", "")
+      :gsub("\27%[[%d;]*[A-Za-z]", "")
+      :gsub("\r", "\n")
+      :gsub("\n\n+", "\n")
+      :gsub("^%s+", "")
+      :gsub("%s+$", "")
 end
 
 -- Run a list of argv commands sequentially (no shell, so it works on Windows).
@@ -492,7 +492,7 @@ end
 ---@return string|? body of the template, nil when it cannot be read
 local function template_body(template)
   local ok, path =
-    pcall(require("obsidian.templates").resolve_template, template, require("obsidian.api").templates_dir())
+      pcall(require("obsidian.templates").resolve_template, template, require("obsidian.api").templates_dir())
   if not ok then
     return nil
   end
@@ -582,6 +582,7 @@ return {
         book = { notes_subdir = "sources", note_id_func = title_id },
         article = { notes_subdir = "sources", note_id_func = title_id },
         web = { notes_subdir = "sources", note_id_func = title_id },
+        talk = { notes_subdir = "sources", note_id_func = title_id },
         reference = { notes_subdir = "references" },
       },
     },
