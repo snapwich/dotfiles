@@ -25,16 +25,16 @@ git/.gitconfig                            →  ~/.gitconfig
 
 ```bash
 # Install a package (creates symlinks in $HOME)
-stow nvim
+stow -t ~ nvim
 
 # Install multiple packages
-stow zsh tmux git
+stow -t ~ zsh tmux git
 
 # Install all packages
-stow */
+stow -t ~ */
 
 # Remove a package (removes symlinks)
-stow -D nvim
+stow -D -t ~ nvim
 ```
 
 ## Making Changes
