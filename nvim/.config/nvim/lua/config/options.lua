@@ -3,8 +3,8 @@ vim.opt.list = false
 
 vim.opt.swapfile = false
 
--- temporarily use tsgo until tsc update: https://github.com/LazyVim/LazyVim/pull/7233
-vim.g.lazyvim_ts_lsp = "tsgo"
+-- use the native TS 7 compiler LSP instead of the default vtsls
+vim.g.lazyvim_ts_lsp = "tsc"
 
 -- disable mouse drag-select visual mode
 vim.o.mouse = "a"
