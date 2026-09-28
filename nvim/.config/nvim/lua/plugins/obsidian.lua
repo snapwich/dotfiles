@@ -522,7 +522,8 @@ local function new_from_template()
     prompt_title = "Templates",
     dir = templates_dir,
     no_default_mappings = true,
-    callback = function(template)
+    callback = function(paths)
+      local template = paths[1]
       if not template or template == "" then
         return
       end
