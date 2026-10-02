@@ -1,7 +1,25 @@
 {
+  "alwaysThinkingEnabled": true,
+  "autoUpdatesChannel": "latest",
+  "effortLevel": "high",
   "env": {
     "ENABLE_TOOL_SEARCH": "true"
   },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' \\\n| { read file_path; case \"$file_path\" in\n  *.js|*.ts|*.jsx|*.tsx|*.cjs|*.cts|*.mjs|*.mts|*.md|*.mdx|*.vue|*.astro|*.json)\n    npx prettier --write -- \"$file_path\"\n    ;;\n  esac; }"
+          }
+        ]
+      },
+    ]
+  },
+  "model": "opus[1m]",
+  "outputStyle": "Concise",
   "permissions": {
     "allow": [
       "Bash(find *)",
@@ -50,32 +68,11 @@
     ],
     "deny": []
   },
-  "model": "opus[1m]",
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "jq -r '.tool_input.file_path' \\\n| { read file_path; case \"$file_path\" in\n  *.js|*.ts|*.jsx|*.tsx|*.cjs|*.cts|*.mjs|*.mts|*.md|*.mdx|*.vue|*.astro|*.json)\n    npx prettier --write -- \"$file_path\"\n    ;;\n  esac; }"
-          }
-        ]
-      }
-    ]
-  },
+  "preferredNotifChannel": "terminal_bell",
+  "skipDangerousModePermissionPrompt": true,
   "statusLine": {
     "type": "command",
-    "command": "jq -r '\"ctx \\((.context_window.used_percentage // 0) | floor)% · \\(((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)) / 1000 | floor)k tokens\"'"
+    "command": "node \"/Users/rsnapp@mastercontrol.com/.mc-dev-mcp/dist/hooks/mc-statusline.cjs\""
   },
-  "outputStyle": "Concise",
-  "alwaysThinkingEnabled": true,
-  "effortLevel": "high",
-  "autoUpdatesChannel": "latest",
-  "tui": "fullscreen",
-  "skipDangerousModePermissionPrompt": true,
-  "feedbackSurveyState": {
-    "lastShownTime": 1753996469248
-  },
-  "preferredNotifChannel": "terminal_bell"
+  "tui": "fullscreen"
 }
