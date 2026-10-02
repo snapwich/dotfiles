@@ -251,6 +251,35 @@ local function all_dailies()
   Obsidian.picker.pick(entries, { prompt_title = "All Dailies" })
 end
 
+-- `Obsidian link`, but picks the target by grepping note contents instead of
+-- names. The selection is kept as the link label; the query starts from it.
+local function link_by_contents()
+  local api = require("obsidian.api")
+  local viz = api.get_visual_selection()
+  if not viz then
+    return
+  elseif #viz.lines ~= 1 then
+    vim.notify("Only in-line visual selections allowed", vim.log.levels.ERROR)
+    return
+  end
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local label = viz.selection
+  require("obsidian.picker").grep_notes({
+    prompt_title = "Link to note (contents)",
+    query = label,
+    callback = function(entries)
+      local entry = entries[1]
+      if not entry or not entry.filename then
+        return
+      end
+      local note = require("obsidian.note").from_file(entry.filename)
+      local row, col = viz.csrow - 1, viz.cscol - 1
+      vim.api.nvim_buf_set_text(bufnr, row, col, row, col + #label, { note:format_link({ label = label }) })
+    end,
+  })
+end
+
 local function vault_sync_all()
   run_for_all_vaults("Vault sync", function(vault_root, datetime)
     local message = string.format("vault backup: %s", datetime)
@@ -631,6 +660,7 @@ return {
     { "<leader>oy", "<cmd>Obsidian yesterday<cr>",                desc = "Daily Yesterday" },
     { "<leader>oo", "<cmd>Obsidian tomorrow<cr>",                 desc = "Daily Tomorrow" },
     { "<leader>os", "<cmd>Obsidian search<cr>",                   desc = "Search Note Contents" },
+    { "<leader>os", link_by_contents,                             desc = "Link Selection to Note (by contents)", mode = "x" },
     { "<leader>of", "<cmd>Obsidian quick_switch<cr>",             desc = "Search Note Names" },
     { "<leader>og", "<cmd>Obsidian tags<cr>",                     desc = "Search Tags" },
     { "<leader>oa", search_aliases,                               desc = "Search Aliases" },
