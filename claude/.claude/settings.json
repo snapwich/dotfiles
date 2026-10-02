@@ -15,7 +15,7 @@
             "command": "jq -r '.tool_input.file_path' \\\n| { read file_path; case \"$file_path\" in\n  *.js|*.ts|*.jsx|*.tsx|*.cjs|*.cts|*.mjs|*.mts|*.md|*.mdx|*.vue|*.astro|*.json)\n    npx prettier --write -- \"$file_path\"\n    ;;\n  esac; }"
           }
         ]
-      },
+      }
     ]
   },
   "model": "opus[1m]",
