@@ -63,3 +63,25 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.bo[ev.buf].commentstring = "> %s"
   end,
 })
+
+-- TS7 (`tsc --lsp`) drops every documentHighlight when the project path has an
+-- `@`, which breaks `[[`/`]]` (Snacks.words). The server encodes `@` as `%40`
+-- and then compares that string to the raw URI we sent. Send it encoded the
+-- same way. Responses carry only ranges, so the request is all that needs it.
+-- Remove once microsoft/TypeScript fixes tsc/internal/ls/documenthighlights.go.
+vim.api.nvim_create_autocmd("LspAttach", {
+  callback = function(args)
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    if not client or client.name ~= "tsc" then
+      return
+    end
+    local request = client.request
+    client.request = function(self, method, params, ...)
+      if method == "textDocument/documentHighlight" and params and params.textDocument then
+        params = vim.deepcopy(params)
+        params.textDocument.uri = params.textDocument.uri:gsub("@", "%%40")
+      end
+      return request(self, method, params, ...)
+    end
+  end,
+})
