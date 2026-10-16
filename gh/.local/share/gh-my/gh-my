@@ -65,6 +65,336 @@ cmd_comments() {
   }
 }
 
+# --- watch -------------------------------------------------------------------
+
+WATCH_QUERY='
+query($owner: String!, $name: String!, $num: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $num) {
+      number title state isDraft mergeable closedAt
+      head: commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 0) {
+        checkRunCountsByState { state count }
+        statusContextCountsByState { state count }
+      } } } } }
+      commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate
+        author { name email user { login } }
+        committer { name email user { login } }
+      } } }
+      reviews(last: 100) { nodes { id state body submittedAt author { login __typename } comments { totalCount } } }
+      reviewThreads(last: 100) { nodes { isResolved comments(last: 100) { nodes {
+        id body createdAt path line originalLine author { login __typename }
+      } } } }
+      comments(last: 100) { nodes { id body createdAt author { login __typename } } }
+    }
+  }
+}'
+
+WATCH_FAILED_QUERY='
+query($owner: String!, $name: String!, $num: Int!, $endCursor: String) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $num) { commits(last: 1) { nodes { commit {
+    statusCheckRollup { contexts(first: 100, after: $endCursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        ... on CheckRun { name conclusion checkSuite { workflowRun { workflow { name } } } }
+        ... on StatusContext { context state }
+      }
+    } }
+  } } } } }
+}'
+
+# Input: the WATCH_QUERY response. Output: {cur, ring, events, marks}.
+# cur is the normalized PR state; it is compared with $prev (the cur of the
+# last poll) to find the events that ring the bell.
+WATCH_DIFF='
+def isbot: (.__typename == "Bot") or ((.login // "") | test("\\[bot\\]$"));
+def line1: (. // "") | gsub("(?s)<!--.*?-->"; "") | gsub("<[^>]*>"; "") | split("\n")
+  | map(gsub("^[\\s#>*_`|-]+|[\\s*_`]+$"; "")) | map(select(length > 0)) | (.[0] // "") | .[0:200];
+def who: {author: (.author.login // "ghost"), bot: ((.author // {}) | isbot)};
+def cnt($a; $s): [$a[] | select(.state as $x | $s | index($x)) | .count] | add // 0;
+def ids(f): map({(f): true}) | add // {};
+
+$prev[0] as $p
+| .data.repository.pullRequest as $r
+| $r.head.nodes[0].commit as $h
+| ($h.statusCheckRollup.contexts.checkRunCountsByState // []) as $runs
+| ($h.statusCheckRollup.contexts.statusContextCountsByState // []) as $ctx
+| {
+    number: $r.number, title: $r.title, state: $r.state, draft: $r.isDraft, closed: $r.closedAt,
+    merge: (if $r.mergeable == "UNKNOWN" then ($p.merge // "UNKNOWN") else $r.mergeable end),
+    head: $h.oid, ncommits: $r.commits.totalCount,
+    checks: {
+      pass: (cnt($runs; ["SUCCESS", "NEUTRAL"]) + cnt($ctx; ["SUCCESS"])),
+      fail: (cnt($runs; ["FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"]) + cnt($ctx; ["FAILURE", "ERROR"])),
+      cancel: cnt($runs; ["CANCELLED", "STALE"]),
+      pending: (cnt($runs; ["QUEUED", "IN_PROGRESS", "PENDING", "WAITING"]) + cnt($ctx; ["PENDING", "EXPECTED"]))
+    },
+    reviews: [$r.reviews.nodes[] | select(.state != "PENDING")
+      | who + {id, state, body: (.body | line1), inline: .comments.totalCount, at: .submittedAt}],
+    comments: (
+      [$r.reviewThreads.nodes[] | .isResolved as $res | .comments.nodes[]
+        | who + {id, at: .createdAt, body: (.body | line1), where: "\(.path):\(.line // .originalLine // "-")", resolved: $res}]
+      + [$r.comments.nodes[] | who + {id, at: .createdAt, body: (.body | line1), where: "conversation"}]),
+    threads: {
+      total: ($r.reviewThreads.nodes | length),
+      unresolved: ([$r.reviewThreads.nodes[] | select(.isResolved | not)] | length)
+    },
+    commits: [$r.commits.nodes[].commit | {
+      oid, headline: .messageHeadline, at: .committedDate,
+      author: (.author.user.login // .author.name),
+      committer: (.committer.user.login // .committer.name),
+      bot: ("\(.author.name) \(.author.email)" | test("\\[bot\\]"))
+    }]
+  }
+| .checks.total = (.checks | .pass + .fail + .cancel + .pending)
+# The API has no time for "checks started/finished", so record when the
+# watch sees the pending state change. It is unknown until the first change.
+| .checks.since = (if $p == null then null
+    elif .head != $p.head or ((.checks.pending > 0) != ($p.checks.pending > 0)) then (now | floor)
+    else $p.checks.since end)
+| . as $c
+| if $p == null then {cur: $c, ring: false, events: [], marks: $marks[0]} else
+    ($p.reviews | ids(.id)) as $oldr
+  | ($p.comments | ids(.id)) as $oldc
+  | ($p.commits | ids(.oid)) as $oldk
+  | [$c.reviews[] | select(($oldr[.id] | not) and .author != $me)] as $nr
+  | [$c.comments[] | select(($oldc[.id] | not) and .author != $me)] as $nc
+  | [$c.commits[] | select(($oldk[.oid] | not) and .author != $me and .committer != $me)] as $nkall
+  | [$nkall[] | select(.bot | not)] as $nk
+  | ($c.head == $p.head) as $same
+  # Ring for the first failure on a head only: later failures wait for "finished".
+  | ($c.checks.fail > 0 and (($same | not) or $p.checks.fail == 0)) as $cfail
+  | ($c.checks.pending == 0 and $c.checks.total > 0 and ($p.checks.pending > 0 or ($same | not))) as $cdone
+  | [$nr[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED"
+      or (if .bot then .inline > 0 else .state == "COMMENTED" and .body != "" end))] as $rr
+  | [$nc[] | select(.bot | not)] as $rc
+  | ($c.merge == "CONFLICTING" and $p.merge != "CONFLICTING") as $conf
+  | [
+      (if $cdone then "checks finished" + (if $c.checks.fail > 0 then ", \($c.checks.fail) failed" else "" end)
+        elif $cfail then "\($c.checks.fail) checks failed" else empty end),
+      ($rr[] | "\(.author) \(.state | ascii_downcase | gsub("_"; " "))"),
+      (if ($rc | length) > 0 then "\($rc | length) comments from \($rc | map(.author) | unique | join(", "))" else empty end),
+      (if $conf then "merge conflicts" else empty end),
+      (if ($nk | length) > 0 then "\($nk | length) commits from \($nk | map(.author) | unique | join(", "))" else empty end),
+      (if $c.state != "OPEN" and $p.state == "OPEN" then "PR \($c.state | ascii_downcase)" else empty end)
+    ] as $ev
+  | {
+      cur: $c, ring: (($ev | length) > 0), events: $ev,
+      marks: ($marks[0]
+        | .ids += ([($nr[], $nc[] | .id), ($nkall[] | .oid) | {(.): true}] | add // {})
+        | .checks = (.checks or $cfail or $cdone)
+        | .merge = (.merge or $conf))
+    }
+  end'
+
+WATCH_RENDER='
+def fit($n): if length > $n then .[0:($n - 1)] + "…" else . end;
+def mk($on): if $on then "● " else "  " end;
+# Epoch seconds or an ISO 8601 date to "1m 30s ago".
+def ago: (if type == "string" then fromdateiso8601 else . end) as $t
+  | ([now - $t, 0] | max | floor) as $s
+  | if $s < 60 then "\($s)s"
+    elif $s < 3600 then "\($s / 60 | floor)m" + (if $s % 60 > 0 then " \($s % 60)s" else "" end)
+    elif $s < 86400 then "\($s / 3600 | floor)h" + (if $s % 3600 >= 60 then " \($s % 3600 / 60 | floor)m" else "" end)
+    else "\($s / 86400 | floor)d" + (if $s % 86400 >= 3600 then " \($s % 86400 / 3600 | floor)h" else "" end) end
+  | . + " ago";
+$cur[0] as $c | $marks[0] as $m | $failed[0] as $f
+| ((if $polled then " · updated \($polled | ago)" else "" end)
+    + (if ($c.state // "OPEN") == "OPEN" then " · next \($next)s" else "" end)) as $tail
+| (if $c == null then $branch else "#\($c.number) \($c.title)" end) as $title
+| [
+    ($title | fit([$w - ($tail | length), 2] | max)) + $tail,
+    (if $err != "" then "! \($err_at | ago)  \($err)" else empty end),
+    (if $bell != "" then mk($m.ids != {} or $m.checks or $m.merge) + "bell  \($bell_at | ago)  \($bell)" else empty end),
+    (if $c == null then "", (if $nopr != "" then "  no PR for \($branch) yet" else "  loading…" end) else
+      (if $c.state != "OPEN" then "  PR is \($c.state)" + (if $c.closed then " \($c.closed | ago)" else "" end) else empty end),
+      (if $c.draft then "  draft" else empty end),
+      (if $c.merge == "CONFLICTING" then mk($m.merge) + "merge conflicts" else empty end),
+      "",
+      (mk($m.checks) + "checks  " + ($c.checks | if .total == 0 then "none" else
+        "\(.pass)/\(.total) passed"
+        + (if .fail > 0 then " · \(.fail) failed" else "" end)
+        + (if .pending > 0 then " · \(.pending) pending" else "" end)
+        + (if .cancel > 0 then " · \(.cancel) cancelled" else "" end)
+        + (if .since == null then "" elif .pending > 0 then " · started \(.since | ago)" else " · finished \(.since | ago)" end) end)),
+      ($f[0:5][] | "    ✗ \(.)"),
+      (if ($f | length) > 5 then "    … \(($f | length) - 5) more" else empty end),
+      "",
+      ($c.reviews | group_by(.author) | map(
+          (map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")) | max_by(.at)) as $d
+          | ($d // max_by(.at)) + {marked: (map($m.ids[.id] // false) | any), inline: (map(.inline) | add)}
+        ) | sort_by(.at)) as $revs
+      | ("  reviews" + (if $revs == [] then "  none" else "" end)),
+        ($revs[] | mk(.marked) + "  \(.author)  \(.state)" + (if .inline > 0 then "  \(.inline) inline" else "" end) + "  \(.at | ago)"),
+      "",
+      "  comments  \($c.threads.unresolved)/\($c.threads.total) threads unresolved · \([$c.comments[] | select(.where == "conversation")] | length) in conversation",
+      ($c.comments | sort_by(.at) | .[-5:][] | mk($m.ids[.id] // false) + "  \(.author)  \(.at | ago)  \(.where)  \(.body)"),
+      "",
+      "  commits  \($c.ncommits)",
+      ($c.commits[-5:][] | mk($m.ids[.oid] // false) + "  \(.oid[0:7])  \(.author)  \(.at | ago)  \(.headline)")
+    end),
+    "",
+    "  any key: clear ● · r: refresh · q: quit"
+  ]
+| .[] | fit($w)'
+
+watch_resolve_pr() {
+  local out
+  if ! out=$(gh pr view ${w_arg:+"$w_arg"} --json number,url -q '"\(.number) \(.url)"' 2>&1); then
+    if [[ "$out" == *"no pull requests found"* ]]; then
+      w_nopr=1
+    else
+      w_err="${out%%$'\n'*}" w_err_at=$EPOCHSECONDS
+    fi
+    return 1
+  fi
+  w_nopr=""
+  w_pr="${out%% *}"
+  # https://github.com/OWNER/NAME/pull/N
+  local path="${out#* https://*/}"
+  w_owner="${path%%/*}"
+  path="${path#*/}"
+  w_name="${path%%/*}"
+}
+
+watch_fetch_failed() {
+  set -o pipefail
+  gh api graphql --paginate -F owner="$w_owner" -F name="$w_name" -F num="$w_pr" -f query="$WATCH_FAILED_QUERY" |
+    jq -s '[.[].data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]
+      | select((.conclusion // .state) as $s | ["FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED", "ERROR"] | index($s))
+      | if .context then .context else "\(.checkSuite.workflowRun.workflow.name // "" | if . != "" then "\(.) / " else "" end)\(.name)" end]'
+}
+
+watch_poll() {
+  local raw key
+  w_err=""
+  if [ -z "$w_pr" ] && ! watch_resolve_pr; then
+    return
+  fi
+  if ! raw=$(gh api graphql -F owner="$w_owner" -F name="$w_name" -F num="$w_pr" -f query="$WATCH_QUERY" 2>&1); then
+    w_err="${raw%%$'\n'*}" w_err_at=$EPOCHSECONDS
+    return
+  fi
+  if ! jq -c --arg me "$w_me" --slurpfile prev "$w_tmp/cur" --slurpfile marks "$w_tmp/marks" \
+    "$WATCH_DIFF" <<<"$raw" >"$w_tmp/diff"; then
+    w_err="could not parse the response" w_err_at=$EPOCHSECONDS
+    return
+  fi
+  w_polled_at=$EPOCHSECONDS
+  jq -c .cur "$w_tmp/diff" >"$w_tmp/cur"
+  jq -c .marks "$w_tmp/diff" >"$w_tmp/marks"
+  if [ "$(jq .ring "$w_tmp/diff")" = true ]; then
+    w_bell="$(jq -r '.events | join(", ")' "$w_tmp/diff")" w_bell_at=$EPOCHSECONDS
+    printf '\a'
+  fi
+
+  # Get the failed check names only when the failures change: a PR can have
+  # hundreds of checks, which take several paginated calls to list.
+  # Keep the old key when the fetch fails, so the next poll tries again.
+  key=$(jq -r '"\(.head):\(.checks.fail)"' "$w_tmp/cur")
+  if [ "${key##*:}" = 0 ]; then
+    echo '[]' >"$w_tmp/failed"
+    w_failed_key="$key"
+  elif [ "$key" != "$w_failed_key" ] &&
+    (watch_fetch_failed >"$w_tmp/failed.new") 2>/dev/null; then
+    mv "$w_tmp/failed.new" "$w_tmp/failed"
+    w_failed_key="$key"
+  fi
+}
+
+watch_render() {
+  local cols rows
+  cols=$(tput cols 2>/dev/null || echo 80)
+  rows=$(tput lines 2>/dev/null || echo 24)
+  jq -nr --argjson w "$cols" --argjson next "$((w_deadline > SECONDS ? w_deadline - SECONDS : 0))" \
+    --argjson polled "${w_polled_at:-null}" --arg err "$w_err" --argjson err_at "${w_err_at:-0}" \
+    --arg bell "$w_bell" --argjson bell_at "${w_bell_at:-0}" --arg nopr "$w_nopr" --arg branch "$w_branch" \
+    --slurpfile cur "$w_tmp/cur" --slurpfile marks "$w_tmp/marks" --slurpfile failed "$w_tmp/failed" \
+    "$WATCH_RENDER" | head -n "$((rows - 1))" | {
+    printf '\e[H'
+    while IFS= read -r line; do
+      printf '%s\e[K\n' "$line"
+    done
+    printf '\e[J'
+  }
+}
+
+watch_clear_marks() {
+  echo '{"ids": {}, "checks": false, "merge": false}' >"$w_tmp/marks"
+}
+
+# Wait for the next poll, and draw again each second so the ages stay current.
+# Return early on "r"; a different key clears the marks.
+watch_wait() {
+  local key
+  while ((w_deadline > SECONDS)); do
+    if [ ! -t 0 ]; then
+      sleep 1
+    elif read -rsn1 -t 1 key; then
+      case "$key" in
+      q) exit 0 ;;
+      r) return ;;
+      *) watch_clear_marks ;;
+      esac
+    elif [ $? -le 128 ]; then
+      sleep 1 # EOF on stdin
+    fi
+    watch_render
+  done
+}
+
+cmd_watch() {
+  w_interval=30 w_arg="" w_pr="" w_owner="" w_name="" w_nopr="" w_err="" w_bell="" w_failed_key=""
+  w_deadline=0 w_polled_at="" w_err_at="" w_bell_at=""
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -n)
+      w_interval="$2"
+      shift 2
+      ;;
+    -n*)
+      w_interval="${1#-n}"
+      shift
+      ;;
+    *)
+      w_arg="$1"
+      shift
+      ;;
+    esac
+  done
+  if ! [[ "$w_interval" =~ ^[0-9]+$ ]] || [ "$w_interval" -lt 10 ]; then
+    echo "Error: -n must be a number of seconds, 10 or more"
+    exit 1
+  fi
+
+  w_me=$(gh api user -q .login) || exit 1
+  w_branch=$(git branch --show-current 2>/dev/null)
+  w_branch="${w_branch:-(detached HEAD)}"
+  w_tmp=$(mktemp -d)
+  echo null >"$w_tmp/cur"
+  echo '[]' >"$w_tmp/failed"
+  watch_clear_marks
+
+  if [ -t 1 ]; then
+    tput civis
+    printf '\e[2J'
+  fi
+  [ -t 0 ] && stty -echo
+  trap 'rm -rf "$w_tmp"; [ -t 0 ] && stty echo; [ -t 1 ] && tput cnorm' EXIT
+  trap 'exit 130' INT TERM HUP
+  trap 'watch_render' WINCH
+
+  while true; do
+    watch_poll
+    w_deadline=$((SECONDS + w_interval))
+    watch_render
+    if [ "$(jq -r '.state // "OPEN"' "$w_tmp/cur")" != OPEN ]; then
+      exit 0
+    fi
+    watch_wait
+  done
+}
+
 cmd_merge() {
   gh pr merge --squash -t "$(gh pr view --json title | jq -r .title) (#$(gh pr view --json number | jq -r .number))" -b ""
 }
@@ -82,6 +412,9 @@ comments)
 merge)
   cmd_merge
   ;;
+watch)
+  cmd_watch "$@"
+  ;;
 *)
   echo "Usage: gh my <command> [args]"
   echo ""
@@ -90,6 +423,7 @@ merge)
   echo "  reviews - Show PR review status"
   echo "  comments [pr-number] - Show PR review comments"
   echo "  merge - Squash merge PR using PR title"
+  echo "  watch [pr] [-n secs] - Watch PR checks, reviews, and comments; ring the bell on changes"
   exit 1
   ;;
 esac
