@@ -89,9 +89,12 @@ return {
               if path then
                 item.filterText = filter .. " " .. query
                 annotate_match(item, path, query)
-                local ok, note = pcall(require("obsidian.note").from_file, path)
+                -- format_link only needs the path when a label is given, so skip parsing the note.
+                local ok, link = pcall(function()
+                  return require("obsidian.note").new(nil, {}, {}, path):format_link({ label = query })
+                end)
                 if ok and item.textEdit then
-                  item.textEdit.newText = note:format_link({ label = query })
+                  item.textEdit.newText = link
                 end
               end
               -- A note with aliases yields one item per alias; after relabeling
