@@ -74,14 +74,14 @@ query($owner: String!, $name: String!, $num: Int!) {
     pullRequest(number: $num) {
       number title state isDraft mergeable closedAt
       head: commits(last: 1) { nodes { commit { oid
-        statusCheckRollup { contexts(first: 0) {
-          checkRunCountsByState { state count }
-          statusContextCountsByState { state count }
-        } }
         checkSuites(first: 100) { nodes {
-          workflowRun { workflow { name } }
-          checkRuns(first: 100, filterBy: {checkType: LATEST, conclusions: [FAILURE, TIMED_OUT, STARTUP_FAILURE, ACTION_REQUIRED]}) {
-            nodes { name }
+          createdAt workflowRun { event workflow { name } }
+          all: checkRuns(filterBy: {checkType: LATEST}) { totalCount }
+          pass: checkRuns(filterBy: {checkType: LATEST, conclusions: [SUCCESS]}) { totalCount }
+          skip: checkRuns(filterBy: {checkType: LATEST, conclusions: [SKIPPED, NEUTRAL]}) { totalCount }
+          cancel: checkRuns(filterBy: {checkType: LATEST, conclusions: [CANCELLED, STALE]}) { totalCount }
+          fail: checkRuns(first: 100, filterBy: {checkType: LATEST, conclusions: [FAILURE, TIMED_OUT, STARTUP_FAILURE, ACTION_REQUIRED]}) {
+            totalCount nodes { name }
           }
         } }
         status { contexts { context state } }
@@ -100,8 +100,10 @@ query($owner: String!, $name: String!, $num: Int!) {
 }'
 
 # Input: the WATCH_QUERY response. Output: {cur, ring, events, marks}.
-# The failed check names come from checkSuites filtered by conclusion, so a
-# PR with hundreds of checks still takes one request.
+# Checks are counted per check suite, filtered by conclusion, so a PR with
+# hundreds of checks still takes one request. A workflow that runs again on
+# the same commit (for example after a label change) makes a new suite; only
+# the newest suite of each workflow and event counts, as on GitHub.
 # cur is the normalized PR state; it is compared with $prev (the cur of the
 # last poll) to find the events that ring the bell.
 WATCH_DIFF='
@@ -112,28 +114,31 @@ def line1: (. // "") | gsub("(?s)<!--.*?-->"; "") | gsub("<[^>]*>"; "") | gsub("
   | gsub("[\\p{Cf}\\x{fe00}-\\x{fe0f}\\x00-\\x09\\x0b-\\x1f\\x7f-\\x9f]"; "") | split("\n")
   | map(gsub("^[\\s#>*_`|-]+|[\\s*_`]+$"; "")) | map(select(length > 0)) | (.[0] // "") | .[0:200];
 def who: {author: (.author.login // "ghost"), bot: ((.author // {}) | isbot)};
-def cnt($a; $s): [$a[] | select(.state as $x | $s | index($x)) | .count] | add // 0;
+def sum(f): map(f) | add // 0;
+def ctxn($ctx; $s): [$ctx[] | select(.state as $x | $s | index($x))] | length;
 def ids(f): map({(f): true}) | add // {};
 
 $prev[0] as $p
 | .data.viewer.login as $me
 | .data.repository.pullRequest as $r
 | $r.head.nodes[0].commit as $h
-| ($h.statusCheckRollup.contexts.checkRunCountsByState // []) as $runs
-| ($h.statusCheckRollup.contexts.statusContextCountsByState // []) as $ctx
+| [$h.checkSuites.nodes[] | .key = (.workflowRun // null | if . then "\(.workflow.name)/\(.event)" else null end)] as $all
+| [$all[] | . as $s | select($s.key == null or all($all[]; .key != $s.key or .createdAt <= $s.createdAt))] as $suites
+| ($h.status.contexts // []) as $ctx
 | {
     number: $r.number, title: $r.title, state: $r.state, draft: $r.isDraft, closed: $r.closedAt,
     merge: (if $r.mergeable == "UNKNOWN" then ($p.merge // "UNKNOWN") else $r.mergeable end),
     head: $h.oid, ncommits: $r.commits.totalCount,
     failed: (
-      [$h.checkSuites.nodes[] | (.workflowRun.workflow.name // "") as $wf
-        | .checkRuns.nodes[] | (if $wf != "" then "\($wf) / " else "" end) + .name]
-      + [($h.status.contexts // [])[] | select(.state == "FAILURE" or .state == "ERROR") | .context]),
+      [$suites[] | (.workflowRun.workflow.name // "") as $wf
+        | .fail.nodes[] | (if $wf != "" then "\($wf) / " else "" end) + .name]
+      + [$ctx[] | select(.state == "FAILURE" or .state == "ERROR") | .context]),
     checks: {
-      pass: (cnt($runs; ["SUCCESS", "NEUTRAL"]) + cnt($ctx; ["SUCCESS"])),
-      fail: (cnt($runs; ["FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"]) + cnt($ctx; ["FAILURE", "ERROR"])),
-      cancel: cnt($runs; ["CANCELLED", "STALE"]),
-      pending: (cnt($runs; ["QUEUED", "IN_PROGRESS", "PENDING", "WAITING"]) + cnt($ctx; ["PENDING", "EXPECTED"]))
+      pass: (($suites | sum(.pass.totalCount)) + ctxn($ctx; ["SUCCESS"])),
+      fail: (($suites | sum(.fail.totalCount)) + ctxn($ctx; ["FAILURE", "ERROR"])),
+      cancel: ($suites | sum(.cancel.totalCount)),
+      pending: (($suites | sum(.all.totalCount - .pass.totalCount - .skip.totalCount - .cancel.totalCount - .fail.totalCount))
+        + ctxn($ctx; ["PENDING", "EXPECTED"]))
     },
     reviews: [$r.reviews.nodes[] | select(.state != "PENDING")
       | who + {id, state, body: (.body | line1), inline: .comments.totalCount, at: .submittedAt}],
