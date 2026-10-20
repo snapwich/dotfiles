@@ -73,6 +73,10 @@ query($owner: String!, $name: String!, $num: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $num) {
       number title state isDraft mergeable closedAt
+      isInMergeQueue mergeQueueEntry { state position }
+      queueRemoved: timelineItems(last: 10, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) { nodes {
+        ... on RemovedFromMergeQueueEvent { id createdAt reason actor { login } }
+      } }
       head: commits(last: 1) { nodes { commit { oid
         checkSuites(first: 100) { nodes {
           createdAt workflowRun { event workflow { name } }
@@ -129,6 +133,12 @@ $prev[0] as $p
     number: $r.number, title: $r.title, state: $r.state, draft: $r.isDraft, closed: $r.closedAt,
     merge: (if $r.mergeable == "UNKNOWN" then ($p.merge // "UNKNOWN") else $r.mergeable end),
     head: $h.oid, ncommits: $r.commits.totalCount,
+    # The queue runs its checks on a merge_group commit, not on the head, so
+    # a failure shows only as a removal event.
+    queue: {
+      in: $r.isInMergeQueue, state: $r.mergeQueueEntry.state, position: $r.mergeQueueEntry.position,
+      removed: [$r.queueRemoved.nodes[] | {id, at: .createdAt, reason: (.reason // "unknown"), actor: (.actor.login // "ghost")}]
+    },
     failed: (
       [$suites[] | (.workflowRun.workflow.name // "") as $wf
         | .fail.nodes[] | (if $wf != "" then "\($wf) / " else "" end) + .name]
@@ -180,12 +190,15 @@ $prev[0] as $p
       or (if .bot then .inline > 0 else .state == "COMMENTED" and .body != "" end))] as $rr
   | [$nc[] | select(.bot | not)] as $rc
   | ($c.merge == "CONFLICTING" and $p.merge != "CONFLICTING") as $conf
+  | ($p.queue.removed // [] | ids(.id)) as $oldq
+  | [$c.queue.removed[] | select(($oldq[.id] | not) and .actor != $me)] as $nq
   | [
       (if $cdone then "checks finished" + (if $c.checks.fail > 0 then ", \($c.checks.fail) failed" else "" end)
         elif $cfail then "\($c.checks.fail) checks failed" else empty end),
       ($rr[] | "\(.author) \(.state | ascii_downcase | gsub("_"; " "))"),
       (if ($rc | length) > 0 then "\($rc | length) comments from \($rc | map(.author) | unique | join(", "))" else empty end),
       (if $conf then "merge conflicts" else empty end),
+      ($nq[] | "removed from merge queue: \(.reason | gsub("_"; " "))"),
       (if ($nk | length) > 0 then "\($nk | length) commits from \($nk | map(.author) | unique | join(", "))" else empty end),
       (if $c.state != "OPEN" and $p.state == "OPEN" then "PR \($c.state | ascii_downcase)" else empty end)
     ] as $ev
@@ -194,7 +207,8 @@ $prev[0] as $p
       marks: ($marks[0]
         | .ids += ([($nr[], $nc[] | .id), ($nkall[] | .oid) | {(.): true}] | add // {})
         | .checks = (.checks or $cfail or $cdone)
-        | .merge = (.merge or $conf))
+        | .merge = (.merge or $conf)
+        | .queue = (.queue or ($nq | length) > 0))
     }
   end'
 
@@ -244,11 +258,15 @@ $cur[0] as $c | $marks[0] as $m | ($c.failed // []) as $f
 | [
     ($title | fit([$w - ($tail | width), 2] | max)) + $tail,
     (if $err != "" then "! \($err_at | ago)  \($err)" else empty end),
-    (if $bell != "" then mk($m.ids != {} or $m.checks or $m.merge) + "bell  \($bell_at | ago)  \($bell)" else empty end),
+    (if $bell != "" then mk($m.ids != {} or $m.checks or $m.merge or $m.queue) + "bell  \($bell_at | ago)  \($bell)" else empty end),
     (if $c == null then "", (if $nopr != "" then "  no PR for \($branch) yet" else "  loading…" end) else
       (if $c.state != "OPEN" then "  PR is \($c.state)" + (if $c.closed then " \($c.closed | ago)" else "" end) else empty end),
       (if $c.draft then "  draft" else empty end),
       (if $c.merge == "CONFLICTING" then mk($m.merge) + "merge conflicts" else empty end),
+      (if $c.queue.in then "  in merge queue · position \($c.queue.position) · \($c.queue.state | ascii_downcase | gsub("_"; " "))"
+        elif $c.queue.removed != [] then ($c.queue.removed | max_by(.at)) as $q
+          | mk($m.queue) + "removed from merge queue \($q.at | ago) · \($q.reason | gsub("_"; " "))"
+        else empty end),
       "",
       (mk($m.checks) + "checks  " + ($c.checks | if .total == 0 then "none" else
         "\(.pass)/\(.total) passed"
@@ -344,7 +362,7 @@ watch_render() {
 }
 
 watch_clear_marks() {
-  echo '{"ids": {}, "checks": false, "merge": false}' >"$w_tmp/marks"
+  echo '{"ids": {}, "checks": false, "merge": false, "queue": false}' >"$w_tmp/marks"
 }
 
 # Wait for the next poll, and draw again each second so the ages stay current.
