@@ -77,18 +77,21 @@ query($owner: String!, $name: String!, $num: Int!) {
       queueRemoved: timelineItems(last: 10, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) { nodes {
         ... on RemovedFromMergeQueueEvent { id createdAt reason actor { login } }
       } }
+      queueLast: timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) { nodes {
+        ... on RemovedFromMergeQueueEvent { beforeCommit {
+          checkSuites(first: 100) { nodes { ...fails } }
+          status { contexts { context state targetUrl } }
+        } }
+      } }
       head: commits(last: 1) { nodes { commit { oid
         checkSuites(first: 100) { nodes {
-          createdAt workflowRun { event workflow { name } }
+          ...fails
           all: checkRuns(filterBy: {checkType: LATEST}) { totalCount }
           pass: checkRuns(filterBy: {checkType: LATEST, conclusions: [SUCCESS]}) { totalCount }
           skip: checkRuns(filterBy: {checkType: LATEST, conclusions: [SKIPPED, NEUTRAL]}) { totalCount }
           cancel: checkRuns(filterBy: {checkType: LATEST, conclusions: [CANCELLED, STALE]}) { totalCount }
-          fail: checkRuns(first: 100, filterBy: {checkType: LATEST, conclusions: [FAILURE, TIMED_OUT, STARTUP_FAILURE, ACTION_REQUIRED]}) {
-            totalCount nodes { name }
-          }
         } }
-        status { contexts { context state } }
+        status { contexts { context state targetUrl } }
       } } }
       commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate
         author { name email user { login } }
@@ -100,6 +103,12 @@ query($owner: String!, $name: String!, $num: Int!) {
       } } } }
       comments(last: 100) { nodes { id body createdAt author { login __typename } } }
     }
+  }
+}
+fragment fails on CheckSuite {
+  createdAt workflowRun { event workflow { name } }
+  fail: checkRuns(first: 100, filterBy: {checkType: LATEST, conclusions: [FAILURE, TIMED_OUT, STARTUP_FAILURE, ACTION_REQUIRED]}) {
+    totalCount nodes { name detailsUrl }
   }
 }'
 
@@ -121,6 +130,10 @@ def who: {author: (.author.login // "ghost"), bot: ((.author // {}) | isbot)};
 def sum(f): map(f) | add // 0;
 def ctxn($ctx; $s): [$ctx[] | select(.state as $x | $s | index($x))] | length;
 def ids(f): map({(f): true}) | add // {};
+# Input: check suites. Output: the failed checks, with the URL of each run.
+def fails($ctx): [.[] | (.workflowRun.workflow.name // "") as $wf
+    | .fail.nodes[] | {name: ((if $wf != "" then "\($wf) / " else "" end) + .name), url: .detailsUrl}]
+  + [$ctx[] | select(.state == "FAILURE" or .state == "ERROR") | {name: .context, url: .targetUrl}];
 
 $prev[0] as $p
 | .data.viewer.login as $me
@@ -137,12 +150,12 @@ $prev[0] as $p
     # a failure shows only as a removal event.
     queue: {
       in: $r.isInMergeQueue, state: $r.mergeQueueEntry.state, position: $r.mergeQueueEntry.position,
-      removed: [$r.queueRemoved.nodes[] | {id, at: .createdAt, reason: (.reason // "unknown"), actor: (.actor.login // "ghost")}]
+      removed: [$r.queueRemoved.nodes[] | {id, at: .createdAt, reason: (.reason // "unknown"), actor: (.actor.login // "ghost")}],
+      # The failed checks on the merge_group commit of the last removal.
+      failed: ($r.queueLast.nodes[0].beforeCommit // null
+        | if . then (.status.contexts // []) as $qctx | .checkSuites.nodes | fails($qctx) else [] end)
     },
-    failed: (
-      [$suites[] | (.workflowRun.workflow.name // "") as $wf
-        | .fail.nodes[] | (if $wf != "" then "\($wf) / " else "" end) + .name]
-      + [$ctx[] | select(.state == "FAILURE" or .state == "ERROR") | .context]),
+    failed: ($suites | fails($ctx)),
     checks: {
       pass: (($suites | sum(.pass.totalCount)) + ctxn($ctx; ["SUCCESS"])),
       fail: (($suites | sum(.fail.totalCount)) + ctxn($ctx; ["FAILURE", "ERROR"])),
@@ -191,7 +204,8 @@ $prev[0] as $p
   | [$nc[] | select(.bot | not)] as $rc
   | ($c.merge == "CONFLICTING" and $p.merge != "CONFLICTING") as $conf
   | ($p.queue.removed // [] | ids(.id)) as $oldq
-  | [$c.queue.removed[] | select(($oldq[.id] | not) and .actor != $me)] as $nq
+  # A merge also removes the PR from the queue; "PR merged" rings for that.
+  | [$c.queue.removed[] | select(($oldq[.id] | not) and .actor != $me and .reason != "merged")] as $nq
   | [
       (if $cdone then "checks finished" + (if $c.checks.fail > 0 then ", \($c.checks.fail) failed" else "" end)
         elif $cfail then "\($c.checks.fail) checks failed" else empty end),
@@ -243,6 +257,9 @@ def width: [explode[] | cw] | add // 0;
 def fit($n): if width <= $n then . else
   [foreach (explode[] | [., cw]) as [$c, $x] (0; . + $x; select(. <= $n - 1) | $c)] | implode + "…" end;
 def mk($on): if $on then "● " else "  " end;
+# Input: failed checks. Output: the first 5, each with its URL below it.
+def fails: (.[0:5][] | "    ✗ \(.name)", (if .url then "        \(.url)" else empty end)),
+  (if length > 5 then "    … \(length - 5) more" else empty end);
 # Epoch seconds or an ISO 8601 date to "1m 30s ago".
 def ago: (if type == "string" then fromdateiso8601 else . end) as $t
   | ([now - $t, 0] | max | floor) as $s
@@ -251,7 +268,7 @@ def ago: (if type == "string" then fromdateiso8601 else . end) as $t
     elif $s < 86400 then "\($s / 3600 | floor)h" + (if $s % 3600 >= 60 then " \($s % 3600 / 60 | floor)m" else "" end)
     else "\($s / 86400 | floor)d" + (if $s % 86400 >= 3600 then " \($s % 86400 / 3600 | floor)h" else "" end) end
   | . + " ago";
-$cur[0] as $c | $marks[0] as $m | ($c.failed // []) as $f
+$cur[0] as $c | $marks[0] as $m
 | ((if $polled then " · updated \($polled | ago)" else "" end)
     + (if ($c.state // "OPEN") == "OPEN" then " · next \($next)s" else "" end)) as $tail
 | (if $c == null then $branch else "#\($c.number) \($c.title)" end) as $title
@@ -264,8 +281,9 @@ $cur[0] as $c | $marks[0] as $m | ($c.failed // []) as $f
       (if $c.draft then "  draft" else empty end),
       (if $c.merge == "CONFLICTING" then mk($m.merge) + "merge conflicts" else empty end),
       (if $c.queue.in then "  in merge queue · position \($c.queue.position) · \($c.queue.state | ascii_downcase | gsub("_"; " "))"
-        elif $c.queue.removed != [] then ($c.queue.removed | max_by(.at)) as $q
-          | mk($m.queue) + "removed from merge queue \($q.at | ago) · \($q.reason | gsub("_"; " "))"
+        elif $c.state == "OPEN" and $c.queue.removed != [] then ($c.queue.removed | max_by(.at)) as $q
+          | mk($m.queue) + "removed from merge queue \($q.at | ago) · \($q.reason | gsub("_"; " "))",
+            ($c.queue.failed | fails)
         else empty end),
       "",
       (mk($m.checks) + "checks  " + ($c.checks | if .total == 0 then "none" else
@@ -274,8 +292,7 @@ $cur[0] as $c | $marks[0] as $m | ($c.failed // []) as $f
         + (if .pending > 0 then " · \(.pending) pending" else "" end)
         + (if .cancel > 0 then " · \(.cancel) cancelled" else "" end)
         + (if .since == null then "" elif .pending > 0 then " · started \(.since | ago)" else " · finished \(.since | ago)" end) end)),
-      ($f[0:5][] | "    ✗ \(.)"),
-      (if ($f | length) > 5 then "    … \(($f | length) - 5) more" else empty end),
+      ($c.failed | fails),
       "",
       ($c.reviews | group_by(.author) | map(
           (map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")) | max_by(.at)) as $d
