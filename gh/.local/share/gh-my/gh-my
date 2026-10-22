@@ -72,7 +72,7 @@ query($owner: String!, $name: String!, $num: Int!) {
   viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequest(number: $num) {
-      number title state isDraft mergeable closedAt
+      number title url state isDraft mergeable closedAt
       isInMergeQueue mergeQueueEntry { state position }
       queueRemoved: timelineItems(last: 10, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) { nodes {
         ... on RemovedFromMergeQueueEvent { id createdAt reason actor { login } }
@@ -106,7 +106,7 @@ query($owner: String!, $name: String!, $num: Int!) {
   }
 }
 fragment fails on CheckSuite {
-  createdAt workflowRun { event workflow { name } }
+  createdAt workflowRun { databaseId event workflow { name } }
   fail: checkRuns(first: 100, filterBy: {checkType: LATEST, conclusions: [FAILURE, TIMED_OUT, STARTUP_FAILURE, ACTION_REQUIRED]}) {
     totalCount nodes { name detailsUrl }
   }
@@ -143,7 +143,7 @@ $prev[0] as $p
 | [$all[] | . as $s | select($s.key == null or all($all[]; .key != $s.key or .createdAt <= $s.createdAt))] as $suites
 | ($h.status.contexts // []) as $ctx
 | {
-    number: $r.number, title: $r.title, state: $r.state, draft: $r.isDraft, closed: $r.closedAt,
+    number: $r.number, title: $r.title, url: $r.url, state: $r.state, draft: $r.isDraft, closed: $r.closedAt,
     merge: (if $r.mergeable == "UNKNOWN" then ($p.merge // "UNKNOWN") else $r.mergeable end),
     head: $h.oid, ncommits: $r.commits.totalCount,
     # The queue runs its checks on a merge_group commit, not on the head, so
@@ -156,6 +156,9 @@ $prev[0] as $p
         | if . then (.status.contexts // []) as $qctx | .checkSuites.nodes | fails($qctx) else [] end)
     },
     failed: ($suites | fails($ctx)),
+    # Runs on the head with failed jobs, for "r". The queue runs are on a
+    # different commit, so a retry does not touch them.
+    retry: ([$suites[] | select(.fail.totalCount > 0) | .workflowRun.databaseId // empty] | unique),
     checks: {
       pass: (($suites | sum(.pass.totalCount)) + ctxn($ctx; ["SUCCESS"])),
       fail: (($suites | sum(.fail.totalCount)) + ctxn($ctx; ["FAILURE", "ERROR"])),
@@ -207,8 +210,8 @@ $prev[0] as $p
   # A merge also removes the PR from the queue; "PR merged" rings for that.
   | [$c.queue.removed[] | select(($oldq[.id] | not) and .actor != $me and .reason != "merged")] as $nq
   | [
-      (if $cdone then "checks finished" + (if $c.checks.fail > 0 then ", \($c.checks.fail) failed" else "" end)
-        elif $cfail then "\($c.checks.fail) checks failed" else empty end),
+      (if $cdone then "PR checks finished" + (if $c.checks.fail > 0 then ", \($c.checks.fail) failed" else "" end)
+        elif $cfail then "\($c.checks.fail) PR checks failed" else empty end),
       ($rr[] | "\(.author) \(.state | ascii_downcase | gsub("_"; " "))"),
       (if ($rc | length) > 0 then "\($rc | length) comments from \($rc | map(.author) | unique | join(", "))" else empty end),
       (if $conf then "merge conflicts" else empty end),
@@ -274,24 +277,30 @@ $cur[0] as $c | $marks[0] as $m
 | (if $c == null then $branch else "#\($c.number) \($c.title)" end) as $title
 | [
     ($title | fit([$w - ($tail | width), 2] | max)) + $tail,
+    (if $c.url then "  \($c.url)" else empty end),
     (if $err != "" then "! \($err_at | ago)  \($err)" else empty end),
+    (if $act != "" then "> " + (if $act_at > 0 then "\($act_at | ago)  " else "" end) + $act else empty end),
     (if $bell != "" then mk($m.ids != {} or $m.checks or $m.merge or $m.queue) + "bell  \($bell_at | ago)  \($bell)" else empty end),
     (if $c == null then "", (if $nopr != "" then "  no PR for \($branch) yet" else "  loading…" end) else
       (if $c.state != "OPEN" then "  PR is \($c.state)" + (if $c.closed then " \($c.closed | ago)" else "" end) else empty end),
       (if $c.draft then "  draft" else empty end),
       (if $c.merge == "CONFLICTING" then mk($m.merge) + "merge conflicts" else empty end),
-      (if $c.queue.in then "  in merge queue · position \($c.queue.position) · \($c.queue.state | ascii_downcase | gsub("_"; " "))"
-        elif $c.state == "OPEN" and $c.queue.removed != [] then ($c.queue.removed | max_by(.at)) as $q
-          | mk($m.queue) + "removed from merge queue \($q.at | ago) · \($q.reason | gsub("_"; " "))",
-            ($c.queue.failed | fails)
-        else empty end),
       "",
-      (mk($m.checks) + "checks  " + ($c.checks | if .total == 0 then "none" else
+      # The queue checks run on a merge_group commit, so they are a group
+      # apart from the checks on the PR head.
+      (if $c.queue.in then "  merge queue  position \($c.queue.position) · \($c.queue.state | ascii_downcase | gsub("_"; " "))", ""
+        elif $c.state == "OPEN" and $c.queue.removed != [] then ($c.queue.removed | max_by(.at)) as $q
+          | mk($m.queue) + "merge queue  removed \($q.at | ago) · \($q.reason | gsub("_"; " "))"
+            + (if $c.queue.failed != [] then " · \($c.queue.failed | length) failed" else "" end),
+            ($c.queue.failed | fails), ""
+        else empty end),
+      (mk($m.checks) + "PR checks  " + ($c.checks | if .total == 0 then "none" else
         "\(.pass)/\(.total) passed"
         + (if .fail > 0 then " · \(.fail) failed" else "" end)
         + (if .pending > 0 then " · \(.pending) pending" else "" end)
         + (if .cancel > 0 then " · \(.cancel) cancelled" else "" end)
-        + (if .since == null then "" elif .pending > 0 then " · started \(.since | ago)" else " · finished \(.since | ago)" end) end)),
+        + (if .since == null then "" elif .pending > 0 then " · started \(.since | ago)" else " · finished \(.since | ago)" end) end)
+        + (if $retry_at > 0 then " · retry requested \($retry_at | ago)" else "" end)),
       ($c.failed | fails),
       "",
       ($c.reviews | group_by(.author) | map(
@@ -308,7 +317,7 @@ $cur[0] as $c | $marks[0] as $m
       ($c.commits[-5:][] | mk($m.ids[.oid] // false) + "  \(.oid[0:7])  \(.author)  \(.at | ago)  \(.headline)")
     end),
     "",
-    "  any key: clear ● · r: refresh · q: quit"
+    "  any key: clear ● · r: retry failed PR checks · m: merge · q: quit"
   ]
 | .[] | fit($w)'
 
@@ -368,6 +377,7 @@ watch_render() {
   jq -nr --argjson w "$cols" --argjson next "$((w_deadline > SECONDS ? w_deadline - SECONDS : 0))" \
     --argjson polled "${w_polled_at:-null}" --arg err "$w_err" --argjson err_at "${w_err_at:-0}" \
     --arg bell "$w_bell" --argjson bell_at "${w_bell_at:-0}" --arg nopr "$w_nopr" --arg branch "$w_branch" \
+    --arg act "$w_act" --argjson act_at "${w_act_at:-0}" --argjson retry_at "$w_retry_at" \
     --slurpfile cur "$w_tmp/cur" --slurpfile marks "$w_tmp/marks" \
     "$WATCH_RENDER" | head -n "$((rows - 1))" | {
     printf '\e[H'
@@ -382,8 +392,66 @@ watch_clear_marks() {
   echo '{"ids": {}, "checks": false, "merge": false, "queue": false}' >"$w_tmp/marks"
 }
 
+# Rerun the failed jobs of the runs on the PR head.
+watch_retry() {
+  local id out n=0 ids
+  ids=$(jq -r '.retry // [] | .[]' "$w_tmp/cur")
+  if [ -z "$ids" ]; then
+    w_act="no failed PR checks to retry" w_act_at=$EPOCHSECONDS
+    return
+  fi
+  w_act="retrying failed PR checks…" w_act_at=0
+  watch_render
+  for id in $ids; do
+    if out=$(gh api -X POST "repos/$w_owner/$w_name/actions/runs/$id/rerun-failed-jobs" 2>&1); then
+      n=$((n + 1))
+    else
+      w_err="retry run $id: ${out%%$'\n'*}" w_err_at=$EPOCHSECONDS
+    fi
+  done
+  w_act=""
+  ((n > 0)) && w_retry_at=$EPOCHSECONDS
+}
+
+# GitHub starts the new checks some seconds after a retry. Until the next
+# poll sees them, poll every 5s for 2m at most.
+watch_retry_done() {
+  ((w_retry_at > 0)) || return
+  if [ "$(jq '.checks | .pending > 0 or .fail == 0' "$w_tmp/cur")" = true ]; then
+    w_retry_at=0
+  elif ((EPOCHSECONDS - w_retry_at > 120)); then
+    w_retry_at=0 w_err="retry: the checks did not start in 2m" w_err_at=$EPOCHSECONDS
+  fi
+}
+
+# Merge as "gh my merge" does. With a merge queue, this adds the PR to the
+# queue again after a removal.
+watch_merge() {
+  local key out
+  if [ -z "$w_pr" ]; then
+    w_err="no PR to merge" w_err_at=$EPOCHSECONDS
+    return
+  fi
+  w_act="merge #$w_pr? y: yes · a different key: no" w_act_at=0
+  watch_render
+  read -rsn1 -t 15 key
+  if [ "$key" != y ]; then
+    w_act="merge cancelled" w_act_at=$EPOCHSECONDS
+    return
+  fi
+  w_act="merging…" w_act_at=0
+  watch_render
+  if out=$(GH_PROMPT_DISABLED=1 cmd_merge "${w_arg:-$w_pr}" 2>&1); then
+    out="${out%$'\n'}"
+    w_act="merge: ${out##*$'\n'}" w_act_at=$EPOCHSECONDS
+  else
+    w_act="" w_err="merge: ${out%%$'\n'*}" w_err_at=$EPOCHSECONDS
+  fi
+  w_act="${w_act//[$'\e\r\t']/}"
+}
+
 # Wait for the next poll, and draw again each second so the ages stay current.
-# Return early on "r"; a different key clears the marks.
+# Return early after "r" or "m"; a different key clears the marks.
 watch_wait() {
   local key
   while ((w_deadline > SECONDS)); do
@@ -392,7 +460,14 @@ watch_wait() {
     elif read -rsn1 -t 1 key; then
       case "$key" in
       q) exit 0 ;;
-      r) return ;;
+      r)
+        watch_retry
+        return
+        ;;
+      m)
+        watch_merge
+        return
+        ;;
       *) watch_clear_marks ;;
       esac
     elif [ $? -le 128 ]; then
@@ -404,7 +479,7 @@ watch_wait() {
 
 cmd_watch() {
   w_interval=30 w_arg="" w_pr="" w_owner="" w_name="" w_nopr="" w_err="" w_bell=""
-  w_deadline=0 w_polled_at="" w_err_at="" w_bell_at=""
+  w_deadline=0 w_polled_at="" w_err_at="" w_bell_at="" w_act="" w_act_at="" w_retry_at=0
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -444,7 +519,8 @@ cmd_watch() {
 
   while true; do
     watch_poll
-    w_deadline=$((SECONDS + w_interval))
+    watch_retry_done
+    w_deadline=$((SECONDS + (w_retry_at > 0 ? 5 : w_interval)))
     watch_render
     if [ "$(jq -r '.state // "OPEN"' "$w_tmp/cur")" != OPEN ]; then
       exit 0
@@ -454,7 +530,9 @@ cmd_watch() {
 }
 
 cmd_merge() {
-  gh pr merge --squash -t "$(gh pr view --json title | jq -r .title) (#$(gh pr view --json number | jq -r .number))" -b ""
+  local pr="${1:-}" subject
+  subject=$(gh pr view ${pr:+"$pr"} --json number,title -q '"\(.title) (#\(.number))"') || return
+  gh pr merge ${pr:+"$pr"} --squash -t "$subject" -b ""
 }
 
 case "${1:-}" in
@@ -468,7 +546,8 @@ comments)
   cmd_comments "$@"
   ;;
 merge)
-  cmd_merge
+  shift
+  cmd_merge "$@"
   ;;
 watch)
   cmd_watch "$@"
@@ -480,7 +559,7 @@ watch)
   echo "  checks - Show PR check status"
   echo "  reviews - Show PR review status"
   echo "  comments [pr-number] - Show PR review comments"
-  echo "  merge - Squash merge PR using PR title"
+  echo "  merge [pr] - Squash merge PR using PR title"
   echo "  watch [pr] [-n secs] - Watch PR checks, reviews, and comments; ring the bell on changes"
   exit 1
   ;;
