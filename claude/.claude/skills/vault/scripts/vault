@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Edit tasks and daily notes in an Obsidian vault. See ../SKILL.md.
+#
+#   vault [--vault NAME|PATH] COMMAND [ARGS…]
+#
+# Vault: --vault, else the vault that holds $PWD, else ~/vaults/work-notes,
+# else ~/vaults/notes.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+vaults_dir="${VAULTS_DIR:-$HOME/vaults}"
+
+find_root() {
+  local d="$1"
+  while [[ "$d" != / && -n "$d" ]]; do
+    [[ -d "$d/.obsidian" ]] && { echo "$d"; return 0; }
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+
+root=""
+if [[ "${1:-}" == --vault ]]; then
+  v="${2:?--vault needs a name or path}"
+  shift 2
+  if [[ -d "$v/.obsidian" ]]; then root="$(cd "$v" && pwd)"
+  elif [[ -d "$vaults_dir/$v/.obsidian" ]]; then root="$vaults_dir/$v"
+  else echo "error: no vault '$v'" >&2; exit 1
+  fi
+elif root="$(find_root "$PWD")"; then :
+elif [[ -d "$vaults_dir/work-notes/.obsidian" ]]; then root="$vaults_dir/work-notes"
+elif [[ -d "$vaults_dir/notes/.obsidian" ]]; then root="$vaults_dir/notes"
+else echo "error: no vault found" >&2; exit 1
+fi
+
+cmd="${1:-}"
+case "$cmd" in
+  ""|-h|--help|help)
+    sed -n '/^## Script/,/^## /p' "$here/../SKILL.md" | sed '$d'
+    exit 0
+    ;;
+  sync)
+    # Same steps as <leader>op in nvim: every vault under $vaults_dir.
+    status=0
+    for v in "$vaults_dir"/*/; do
+      v="${v%/}"
+      [[ -d "$v/.obsidian" && -d "$v/.git" ]] || continue
+      name="$(basename "$v")"
+      export GIT_TERMINAL_PROMPT=0
+      if ! out="$(
+        git -C "$v" add -A &&
+          { git -C "$v" diff --cached --quiet ||
+            git -C "$v" commit -q -m "vault backup: $(date '+%Y-%m-%d %H:%M:%S')"; } &&
+          git -C "$v" pull -q --rebase &&
+          git -C "$v" push -q 2>&1
+      )"; then
+        echo "sync failed [$name]: $out"
+        status=1
+      else
+        echo "synced $name"
+      fi
+    done
+    exit "$status"
+    ;;
+esac
+
+out_file="$(mktemp)"
+trap 'rm -f "$out_file"' EXIT
+args_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@")"
+
+set +e
+(
+  cd "$root" &&
+    VAULT_ROOT="$root" VAULT_ARGS="$args_json" VAULT_OUT="$out_file" \
+      timeout 60 nvim --headless -n -c "luafile $here/vault.lua" >/dev/null 2>&1
+)
+code=$?
+set -e
+
+if [[ -s "$out_file" ]]; then
+  cat "$out_file"
+elif [[ $code -ne 0 ]]; then
+  echo "error: nvim exited $code with no output (timeout or crash)"
+fi
+exit "$code"
