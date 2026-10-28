@@ -248,7 +248,12 @@ local function all_dailies()
     return a._sort > b._sort
   end)
 
-  Obsidian.picker.pick(entries, { prompt_title = "All Dailies" })
+  Obsidian.picker.pick(entries, {
+    prompt_title = "All Dailies",
+    preview_item = function(entry)
+      return util.preview_path(entry.filename)
+    end,
+  })
 end
 
 -- `Obsidian link`, but picks the target by grepping note contents instead of
