@@ -34,4 +34,13 @@ fi
 # exports it as TMUX_PANE for gwtmux's window lookups.
 extra="'' 'Worktree Done' d { display-popup -E -T ' gwtmux: worktree done ' -d '#{pane_current_path}' -e 'GWTMUX_PANE=#{pane_id}' '~/.config/tmux/gwtmux-done.sh' }"
 
+# Priority submenu: sets @priority on the window, which .tmux.conf uses for
+# the tab colors. The current level is greyed out ('-' prefix).
+extra="$extra Priority p { display-menu -T '#[align=centre]Priority' -x W -y W \
+'#{?#{==:#{@priority},high},-,}High' h { set -w @priority high } \
+'#{?#{==:#{@priority},medium},-,}Medium' m { set -w @priority medium } \
+'#{?#{==:#{@priority},low},-,}Low' l { set -w @priority low } \
+'' \
+'#{?@priority,,-}Clear' c { set -wu @priority } }"
+
 tmux bind-key -T "$table" "$key" "$default $extra"
