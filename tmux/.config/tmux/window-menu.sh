@@ -35,12 +35,14 @@ fi
 extra="'' 'Worktree Done' d { display-popup -E -T ' gwtmux: worktree done ' -d '#{pane_current_path}' -e 'GWTMUX_PANE=#{pane_id}' '~/.config/tmux/gwtmux-done.sh' }"
 
 # Priority submenu: sets @priority on the window, which .tmux.conf uses for
-# the tab colors. The current level is greyed out ('-' prefix).
+# the tab colors, then sorts the tabs by priority. The current level is
+# greyed out ('-' prefix).
+sort="run-shell '~/.config/tmux/priority-sort.sh #{window_id}'"
 extra="$extra Priority p { display-menu -T '#[align=centre]Priority' -x W -y W \
-'#{?#{==:#{@priority},high},-,}High' h { set -w @priority high } \
-'#{?#{==:#{@priority},medium},-,}Medium' m { set -w @priority medium } \
-'#{?#{==:#{@priority},low},-,}Low' l { set -w @priority low } \
+'#{?#{==:#{@priority},high},-,}High' h { set -w @priority high ; $sort } \
+'#{?#{==:#{@priority},medium},-,}Medium' m { set -w @priority medium ; $sort } \
+'#{?#{==:#{@priority},low},-,}Low' l { set -w @priority low ; $sort } \
 '' \
-'#{?@priority,,-}Clear' c { set -wu @priority } }"
+'#{?@priority,,-}Clear' c { set -wu @priority ; $sort } }"
 
 tmux bind-key -T "$table" "$key" "$default $extra"
