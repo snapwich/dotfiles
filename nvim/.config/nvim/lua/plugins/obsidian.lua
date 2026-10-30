@@ -306,10 +306,10 @@ local function title_id(title, dir)
 end
 
 -- A reference points at an existing source note; these are the candidates.
--- Books, articles and web pages all live together here — what distinguishes
--- them is their `tags`, not their folder.
+-- Books, articles, web pages and videos all live together here — what
+-- distinguishes them is their `tags`, not their folder.
 local source_dirs = { "sources" }
-local source_kinds = { book = true, article = true, web = true }
+local source_kinds = { book = true, article = true, web = true, video = true }
 
 -- Cheap frontmatter read for picker labels. Scalars land on the table as-is;
 -- `tags` and `aliases` keep their block-list items.
@@ -617,6 +617,7 @@ return {
         book = { notes_subdir = "sources", note_id_func = title_id },
         article = { notes_subdir = "sources", note_id_func = title_id },
         web = { notes_subdir = "sources", note_id_func = title_id },
+        video = { notes_subdir = "sources", note_id_func = title_id },
         talk = { notes_subdir = "sources", note_id_func = title_id },
         reference = { notes_subdir = "references" },
       },
