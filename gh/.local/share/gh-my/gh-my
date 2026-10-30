@@ -112,13 +112,14 @@ fragment fails on CheckSuite {
   }
 }'
 
-# Input: the WATCH_QUERY response. Output: {cur, ring, events, marks}.
+# Input: the WATCH_QUERY response. Output: {cur, ring, moved, events, marks}.
 # Checks are counted per check suite, filtered by conclusion, so a PR with
 # hundreds of checks still takes one request. A workflow that runs again on
 # the same commit (for example after a label change) makes a new suite; only
 # the newest suite of each workflow and event counts, as on GitHub.
 # cur is the normalized PR state; it is compared with $prev (the cur of the
-# last poll) to find the events that ring the bell.
+# last poll) to find the events that ring the bell. moved is true when the
+# head is a different commit.
 WATCH_DIFF='
 def isbot: (.__typename == "Bot") or ((.login // "") | test("\\[bot\\]$"));
 def line1: (. // "") | gsub("(?s)<!--.*?-->"; "") | gsub("<[^>]*>"; "") | gsub("\t"; " ")
@@ -190,7 +191,7 @@ $prev[0] as $p
     elif .head != $p.head or ((.checks.pending > 0) != ($p.checks.pending > 0)) then (now | floor)
     else $p.checks.since end)
 | . as $c
-| if $p == null then {cur: $c, ring: false, events: [], marks: $marks[0]} else
+| if $p == null then {cur: $c, ring: false, moved: false, events: [], marks: $marks[0]} else
     ($p.reviews | ids(.id)) as $oldr
   | ($p.comments | ids(.id)) as $oldc
   | ($p.commits | ids(.oid)) as $oldk
@@ -220,7 +221,7 @@ $prev[0] as $p
       (if $c.state != "OPEN" and $p.state == "OPEN" then "PR \($c.state | ascii_downcase)" else empty end)
     ] as $ev
   | {
-      cur: $c, ring: (($ev | length) > 0), events: $ev,
+      cur: $c, ring: (($ev | length) > 0), moved: ($same | not), events: $ev,
       marks: ($marks[0]
         | .ids += ([($nr[], $nc[] | .id), ($nkall[] | .oid) | {(.): true}] | add // {})
         | .checks = (.checks or $cfail or $cdone)
@@ -347,7 +348,7 @@ watch_resolve_pr() {
 }
 
 watch_poll() {
-  local raw
+  local raw ring moved
   w_err=""
   if [ -z "$w_pr" ] && ! watch_resolve_pr; then
     return
@@ -364,9 +365,13 @@ watch_poll() {
   w_polled_at=$EPOCHSECONDS
   jq -c .cur "$w_tmp/diff" >"$w_tmp/cur"
   jq -c .marks "$w_tmp/diff" >"$w_tmp/marks"
-  if [ "$(jq .ring "$w_tmp/diff")" = true ]; then
+  read -r ring moved < <(jq -r '"\(.ring) \(.moved)"' "$w_tmp/diff")
+  if [ "$ring" = true ]; then
     w_bell="$(jq -r '.events | join(", ")' "$w_tmp/diff")" w_bell_at=$EPOCHSECONDS
     printf '\a'
+  elif [ "$moved" = true ]; then
+    # The last bell was about the old head.
+    w_bell="" w_bell_at=""
   fi
 }
 
