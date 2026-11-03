@@ -190,6 +190,18 @@ $prev[0] as $p
 | .checks.since = (if $p == null then null
     elif .head != $p.head or ((.checks.pending > 0) != ($p.checks.pending > 0)) then (now | floor)
     else $p.checks.since end)
+# A workflow can start a different workflow when it ends (workflow_run). The
+# new check suite comes some seconds later, so for a short time the PR looks
+# finished but it is not. The checks are "settled" when two polls at least
+# $settle seconds apart see no pending checks and the same total. The
+# "finished" bell and a queued "r" wait for settled. On the first poll,
+# finished checks are settled immediately, so the watch does not ring for them.
+| .checks.done = (.checks.pending == 0 and .checks.total > 0)
+| .checks.done_at = (if .checks.done | not then null
+    elif $p == null then 0
+    elif .head == $p.head and $p.checks.done_at != null and .checks.total == $p.checks.total then $p.checks.done_at
+    else (now | floor) end)
+| .checks.settled = (.checks.done_at != null and (now | floor) - .checks.done_at >= $settle)
 | . as $c
 | if $p == null then {cur: $c, ring: false, moved: false, events: [], marks: $marks[0]} else
     ($p.reviews | ids(.id)) as $oldr
@@ -202,7 +214,7 @@ $prev[0] as $p
   | ($c.head == $p.head) as $same
   # Ring for the first failure on a head only: later failures wait for "finished".
   | ($c.checks.fail > 0 and (($same | not) or $p.checks.fail == 0)) as $cfail
-  | ($c.checks.pending == 0 and $c.checks.total > 0 and ($p.checks.pending > 0 or ($same | not))) as $cdone
+  | ($c.checks.settled and ($p.checks.settled | not)) as $cdone
   | [$nr[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED"
       or (if .bot then .inline > 0 else .state == "COMMENTED" and .body != "" end))] as $rr
   | [$nc[] | select(.bot | not)] as $rc
@@ -301,7 +313,8 @@ $cur[0] as $c | $marks[0] as $m
         + (if .pending > 0 then " · \(.pending) pending" else "" end)
         + (if .cancel > 0 then " · \(.cancel) cancelled" else "" end)
         + (if .since == null then "" elif .pending > 0 then " · started \(.since | ago)" else " · finished \(.since | ago)" end) end)
-        + (if $retry_at > 0 then " · retry requested \($retry_at | ago)" else "" end)),
+        + (if $retry_at > 0 then " · retry requested \($retry_at | ago)" else "" end)
+        + (if $queued_at > 0 then " · retry queued \($queued_at | ago)" else "" end)),
       ($c.failed | fails),
       "",
       ($c.reviews | group_by(.author) | map(
@@ -349,7 +362,7 @@ watch_resolve_pr() {
 
 watch_poll() {
   local raw ring moved
-  w_err=""
+  w_err="" w_rang=""
   if [ -z "$w_pr" ] && ! watch_resolve_pr; then
     return
   fi
@@ -357,7 +370,7 @@ watch_poll() {
     w_err="${raw%%$'\n'*}" w_err_at=$EPOCHSECONDS
     return
   fi
-  if ! jq -c --slurpfile prev "$w_tmp/cur" --slurpfile marks "$w_tmp/marks" \
+  if ! jq -c --slurpfile prev "$w_tmp/cur" --slurpfile marks "$w_tmp/marks" --argjson settle "$w_interval" \
     "$WATCH_DIFF" <<<"$raw" >"$w_tmp/diff"; then
     w_err="could not parse the response" w_err_at=$EPOCHSECONDS
     return
@@ -367,7 +380,7 @@ watch_poll() {
   jq -c .marks "$w_tmp/diff" >"$w_tmp/marks"
   read -r ring moved < <(jq -r '"\(.ring) \(.moved)"' "$w_tmp/diff")
   if [ "$ring" = true ]; then
-    w_bell="$(jq -r '.events | join(", ")' "$w_tmp/diff")" w_bell_at=$EPOCHSECONDS
+    w_bell="$(jq -r '.events | join(", ")' "$w_tmp/diff")" w_bell_at=$EPOCHSECONDS w_rang=1
     printf '\a'
   elif [ "$moved" = true ]; then
     # The last bell was about the old head.
@@ -383,6 +396,7 @@ watch_render() {
     --argjson polled "${w_polled_at:-null}" --arg err "$w_err" --argjson err_at "${w_err_at:-0}" \
     --arg bell "$w_bell" --argjson bell_at "${w_bell_at:-0}" --arg nopr "$w_nopr" --arg branch "$w_branch" \
     --arg act "$w_act" --argjson act_at "${w_act_at:-0}" --argjson retry_at "$w_retry_at" \
+    --argjson queued_at "$w_queue_at" \
     --slurpfile cur "$w_tmp/cur" --slurpfile marks "$w_tmp/marks" \
     "$WATCH_RENDER" | head -n "$((rows - 1))" | {
     printf '\e[H'
@@ -407,15 +421,69 @@ watch_retry() {
   fi
   w_act="retrying failed PR checks…" w_act_at=0
   watch_render
+  w_act=""
   for id in $ids; do
     if out=$(gh api -X POST "repos/$w_owner/$w_name/actions/runs/$id/rerun-failed-jobs" 2>&1); then
       n=$((n + 1))
     else
-      w_err="retry run $id: ${out%%$'\n'*}" w_err_at=$EPOCHSECONDS
+      # In w_act, not w_err: the poll that comes next clears w_err.
+      w_act="retry run $id failed: ${out%%$'\n'*}" w_act_at=$EPOCHSECONDS
     fi
   done
-  w_act=""
   ((n > 0)) && w_retry_at=$EPOCHSECONDS
+}
+
+# "r": retry now when the checks are settled. If not, queue the retry until
+# they are. "r" again cancels the queued retry.
+watch_retry_key() {
+  local state
+  if ((w_queue_at > 0)); then
+    w_queue="" w_queue_at=0 w_act="queued retry cancelled" w_act_at=$EPOCHSECONDS
+    return
+  fi
+  if ((w_retry_at > 0)); then
+    w_act="retry already requested, waiting for the checks to start" w_act_at=$EPOCHSECONDS
+    return
+  fi
+  state=$(jq -r 'if (.retry // []) == [] then "none" elif .checks.settled then "now" else "queue" end' "$w_tmp/cur")
+  case "$state" in
+  none) w_act="no failed PR checks to retry" w_act_at=$EPOCHSECONDS ;;
+  now) watch_retry ;;
+  queue)
+    # Keep the failures now, to find new failures before the retry.
+    w_queue=$(jq -c '{head, failed: [.failed[].name]}' "$w_tmp/cur") w_queue_at=$EPOCHSECONDS
+    w_act=""
+    ;;
+  esac
+}
+
+# After each poll: send the queued retry when the checks are settled. Cancel
+# it for a new head or a new failure, because then the failure is possibly
+# not flaky.
+watch_retry_queue() {
+  local why
+  ((w_queue_at > 0)) || return
+  why=$(jq -r --argjson q "$w_queue" '
+    if .head != $q.head then "head"
+    else ([.failed[].name] - $q.failed) as $new
+      | if $new != [] then "new failure: \($new | join(", "))" else "" end end' "$w_tmp/cur")
+  if [ "$why" = head ]; then
+    w_queue="" w_queue_at=0 w_act="queued retry cancelled: new head commit" w_act_at=$EPOCHSECONDS
+  elif [ -n "$why" ]; then
+    why="${why//[$'\e\r\t\a']/}"
+    w_queue="" w_queue_at=0 w_act="queued retry cancelled: $why" w_act_at=$EPOCHSECONDS
+    if [ -n "$w_rang" ]; then
+      w_bell+=", queued retry cancelled"
+    else
+      w_bell="queued retry cancelled: $why" w_bell_at=$EPOCHSECONDS
+      printf '\a'
+    fi
+    jq -c '.checks = true' "$w_tmp/marks" >"$w_tmp/marks.new" && mv "$w_tmp/marks.new" "$w_tmp/marks"
+  elif [ "$(jq '.checks.settled' "$w_tmp/cur")" = true ]; then
+    w_queue="" w_queue_at=0
+    watch_retry
+    [ -n "$w_rang" ] && ((w_retry_at > 0)) && w_bell+=", retry sent"
+  fi
 }
 
 # GitHub starts the new checks some seconds after a retry. Until the next
@@ -456,7 +524,7 @@ watch_merge() {
 }
 
 # Wait for the next poll, and draw again each second so the ages stay current.
-# Return early after "r" or "m"; a different key clears the marks.
+# Return early after a retry or "m"; a different key clears the marks.
 watch_wait() {
   local key
   while ((w_deadline > SECONDS)); do
@@ -466,8 +534,8 @@ watch_wait() {
       case "$key" in
       q) exit 0 ;;
       r)
-        watch_retry
-        return
+        watch_retry_key
+        ((w_retry_at > 0)) && return
         ;;
       m)
         watch_merge
@@ -485,6 +553,7 @@ watch_wait() {
 cmd_watch() {
   w_interval=30 w_arg="" w_pr="" w_owner="" w_name="" w_nopr="" w_err="" w_bell=""
   w_deadline=0 w_polled_at="" w_err_at="" w_bell_at="" w_act="" w_act_at="" w_retry_at=0
+  w_queue="" w_queue_at=0 w_rang=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -524,6 +593,7 @@ cmd_watch() {
 
   while true; do
     watch_poll
+    watch_retry_queue
     watch_retry_done
     w_deadline=$((SECONDS + (w_retry_at > 0 ? 5 : w_interval)))
     watch_render
