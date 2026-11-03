@@ -251,7 +251,7 @@ local function all_dailies()
   Obsidian.picker.pick(entries, {
     prompt_title = "All Dailies",
     preview_item = function(entry)
-      return util.preview_path(entry.filename)
+      return require("obsidian.picker").preview_path(entry.filename)
     end,
   })
 end
