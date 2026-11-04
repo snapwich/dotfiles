@@ -515,8 +515,15 @@ watch_merge() {
   w_act="merging…" w_act_at=0
   watch_render
   if out=$(GH_PROMPT_DISABLED=1 cmd_merge "${w_arg:-$w_pr}" 2>&1); then
+    # When stdout is not a terminal, gh does not print its success line. With a
+    # merge queue, it prints only the warning that the queue sets the merge
+    # strategy. Show a success line in place of the warning.
+    local done=done
+    [[ "$out" == *"is set by the merge queue"* ]] && done="will be added to the merge queue when ready"
+    out=$(grep -v 'is set by the merge queue' <<<"$out")
     out="${out%$'\n'}"
-    w_act="merge: ${out##*$'\n'}" w_act_at=$EPOCHSECONDS
+    out="${out##*$'\n'}"
+    w_act="merge: ${out:-$done}" w_act_at=$EPOCHSECONDS
   else
     w_act="" w_err="merge: ${out%%$'\n'*}" w_err_at=$EPOCHSECONDS
   fi
