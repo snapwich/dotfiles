@@ -37,12 +37,19 @@ extra="'' 'Worktree Done' d { display-popup -E -T ' gwtmux: worktree done ' -d '
 # Priority submenu: sets @priority on the window, which .tmux.conf uses for
 # the tab colors, then sorts the tabs by priority. The current level is
 # greyed out ('-' prefix).
+#
+# The item names use '##{' so the outer menu does not expand them. tmux
+# expands the formats of a menu item command when the menu opens, then
+# parses the result again. If the outer menu expanded the names, the first
+# item of a high window would become '-High', which tmux parses as the flag
+# '-H igh'. A '--' does not help, because tmux drops it when it stores the
+# binding. #{window_id} is expanded by the outer menu, as before.
 sort="run-shell '~/.config/tmux/priority-sort.sh #{window_id}'"
 extra="$extra Priority p { display-menu -T '#[align=centre]Priority' -x W -y W \
-'#{?#{==:#{@priority},high},-,}High' h { set -w @priority high ; $sort } \
-'#{?#{==:#{@priority},medium},-,}Medium' m { set -w @priority medium ; $sort } \
-'#{?#{==:#{@priority},low},-,}Low' l { set -w @priority low ; $sort } \
+'##{?##{==:##{@priority},high},-,}High' h { set -w @priority high ; $sort } \
+'##{?##{==:##{@priority},medium},-,}Medium' m { set -w @priority medium ; $sort } \
+'##{?##{==:##{@priority},low},-,}Low' l { set -w @priority low ; $sort } \
 '' \
-'#{?@priority,,-}Clear' c { set -wu @priority ; $sort } }"
+'##{?@priority,,-}Clear' c { set -wu @priority ; $sort } }"
 
 tmux bind-key -T "$table" "$key" "$default $extra"
