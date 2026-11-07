@@ -6,10 +6,6 @@ end, {
     path = "~/vaults/notes",
   },
   {
-    name = "_dev-notes",
-    path = "/home/dev/repos/obsidian-tasks.nvim/default/tests/fixtures/vault",
-  },
-  {
     name = "work-notes",
     path = "~/vaults/work-notes",
     overrides = {
