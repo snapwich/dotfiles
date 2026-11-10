@@ -1,4 +1,6 @@
 git:
+  # Background fetch races with a manual pull on startup ("cannot lock ref ... but expected").
+  autoFetch: false
   pagers:
     - colorArg: always
       pager: delta --paging=never
