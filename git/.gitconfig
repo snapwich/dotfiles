@@ -18,6 +18,10 @@
   rebase = true
 [rebase]
   autoStash = true
+[fetch]
+	prune = true
+[remote "origin"]
+	fetch = ^refs/heads/gh-readonly-queue/*
 [include]
   path = ~/.config/delta/themes.gitconfig
 [include]
