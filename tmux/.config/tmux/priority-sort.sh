@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sort the windows of a session by @priority: high, medium, low, then no
+# Sort the windows of a session by @priority: high, medium, low, pr, then no
 # priority. Windows with the same priority keep their order.
 #
 # Usage: priority-sort.sh <window-id>
@@ -17,7 +17,7 @@ active="$(tmux display-message -p -t "$session" '#{window_id}')"
 # The index list stays in index order: those are the slots to fill.
 mapfile -t slots < <(tmux list-windows -t "$session" -F '#{window_index}')
 mapfile -t wanted < <(
-	tmux list-windows -t "$session" -F '#{?#{==:#{@priority},high},0,#{?#{==:#{@priority},medium},1,#{?#{==:#{@priority},low},2,3}}}	#{window_index}	#{window_id}' |
+	tmux list-windows -t "$session" -F '#{?#{==:#{@priority},high},0,#{?#{==:#{@priority},medium},1,#{?#{==:#{@priority},low},2,#{?#{==:#{@priority},pr},3,4}}}}	#{window_index}	#{window_id}' |
 		sort -t "$(printf '\t')" -k1,1n -k2,2n |
 		cut -f3
 )

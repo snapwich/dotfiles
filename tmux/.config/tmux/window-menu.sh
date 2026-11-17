@@ -49,6 +49,7 @@ extra="$extra Priority p { display-menu -T '#[align=centre]Priority' -x W -y W \
 '##{?##{==:##{@priority},high},-,}High' h { set -w @priority high ; $sort } \
 '##{?##{==:##{@priority},medium},-,}Medium' m { set -w @priority medium ; $sort } \
 '##{?##{==:##{@priority},low},-,}Low' l { set -w @priority low ; $sort } \
+'##{?##{==:##{@priority},pr},-,}PR' p { set -w @priority pr ; $sort } \
 '' \
 '##{?@priority,,-}Clear' c { set -wu @priority ; $sort } }"
 
