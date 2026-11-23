@@ -336,7 +336,9 @@ $cur[0] as $c | $marks[0] as $m
       else empty end)
     end),
     "",
-    "  any key: clear ● · r: retry failed PR checks · m: merge · p: pull · q: quit"
+    "  any key: clear ● · r: retry failed PR checks · m: merge"
+      + (if $c.state != "OPEN" then "" elif $c.draft then " · d: ready for review" else " · d: draft" end)
+      + " · p: pull · q: quit"
   ]
 | .[] | fit($w)'
 
@@ -536,6 +538,37 @@ watch_merge() {
   w_act="${w_act//[$'\e\r\t']/}"
 }
 
+# Toggle the draft state: mark a draft PR ready for review, or convert a PR
+# that is ready back to a draft.
+watch_draft() {
+  local key out draft state ask doing done undo=()
+  read -r draft state < <(jq -r '"\(.draft) \(.state)"' "$w_tmp/cur")
+  if [ -z "$w_pr" ] || [ "$state" != OPEN ]; then
+    w_err="no open PR to change" w_err_at=$EPOCHSECONDS
+    return
+  fi
+  if [ "$draft" = true ]; then
+    ask="mark #$w_pr ready for review" doing="marking ready…" done="#$w_pr is ready for review"
+  else
+    ask="convert #$w_pr to draft" doing="converting to draft…" done="#$w_pr is a draft" undo=(--undo)
+  fi
+  w_act="$ask? y: yes · a different key: no" w_act_at=0
+  watch_render
+  read -rsn1 -t 15 key
+  if [ "$key" != y ]; then
+    w_act="draft change cancelled" w_act_at=$EPOCHSECONDS
+    return
+  fi
+  w_act="$doing" w_act_at=0
+  watch_render
+  if out=$(GH_PROMPT_DISABLED=1 gh pr ready "${w_arg:-$w_pr}" "${undo[@]}" 2>&1); then
+    w_act="$done" w_act_at=$EPOCHSECONDS
+  else
+    w_act="" w_err="draft: ${out%%$'\n'*}" w_err_at=$EPOCHSECONDS
+  fi
+  w_err="${w_err//[$'\e\r\t']/}"
+}
+
 # --- pull --------------------------------------------------------------------
 # Bring the PR head into the checkout with a fast-forward only, never a rebase
 # or a stash. The pull occurs only when the current branch tracks the PR
@@ -693,7 +726,7 @@ watch_reset() {
 }
 
 # Wait for the next poll, and draw again each second so the ages stay current.
-# Return early after a retry or "m"; a different key clears the marks.
+# Return early after a retry, "m", "d" or "p"; a different key clears the marks.
 watch_wait() {
   local key
   while ((w_deadline > SECONDS)); do
@@ -708,6 +741,10 @@ watch_wait() {
         ;;
       m)
         watch_merge
+        return
+        ;;
+      d)
+        watch_draft
         return
         ;;
       p)
