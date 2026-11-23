@@ -72,7 +72,7 @@
   "skipDangerousModePermissionPrompt": true,
   "statusLine": {
     "type": "command",
-    "command": "node \"/Users/rsnapp@mastercontrol.com/.mc-dev-mcp/dist/hooks/mc-statusline.cjs\""
+    "command": "jq -r '\"\\(.model.display_name // \"?\")\\(if .effort.level then \" \" + .effort.level else \"\" end) · ctx \\((.context_window.used_percentage // 0) | floor)% · \\(((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)) / 1000 | floor)k tokens\"'"
   },
   "tui": "fullscreen"
 }
